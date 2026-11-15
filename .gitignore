@@ -1,0 +1,9 @@
+node_modules/
+.firebase/
+.firebase-cache/
+.firebaserc
+*-debug.log
+.env
+.env.*
+*service-account*.json
+*.pem

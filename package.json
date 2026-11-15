@@ -1,0 +1,15 @@
+{
+  "name": "eagles-daily-word",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tools/model.test.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-eagles 'node --test tools/rules.test.js'"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.0",
+    "firebase": "12.5.0",
+    "firebase-admin": "13.6.0",
+    "firebase-tools": "^14.27.0"
+  }
+}
