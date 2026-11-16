@@ -46,7 +46,6 @@ service cloud.firestore {
       allow update: if memberShape(request.resource.data) && (
         (teacher() && resource.data.role == 'student'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'active']))
-        || (student() && own(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shareProgress']))
       );
     }
     function planPath(plan) { return /databases/$(database)/documents/plans/$(plan); }
@@ -71,9 +70,13 @@ service cloud.firestore {
     match /plans/{plan} {
       allow read: if active();
       allow create: if teacher() && planShape(request.resource.data) && request.resource.data.start > request.time.toMillis();
-      allow update: if teacher() && planShape(request.resource.data) && (
-        (resource.data.start > request.time.toMillis() && request.resource.data.start > request.time.toMillis())
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subtitle', 'mode'])
+      allow update: if teacher() && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived'])
+          && (!request.resource.data.keys().hasAny(['archived']) || request.resource.data.archived == true))
+        || (resource.data.get('archived', false) == false && planShape(request.resource.data) && (
+          (resource.data.start > request.time.toMillis() && request.resource.data.start > request.time.toMillis())
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subtitle', 'mode'])
+        ))
       );
       match /progress/{uid} {
         allow get: if teacher() || (student() && own(uid));
@@ -91,7 +94,7 @@ service cloud.firestore {
       }
       match /nest/{uid} {
         allow get: if teacher() || (student() && own(uid)) ||
-          (active() && get(account(uid)).data.active && get(account(uid)).data.shareProgress);
+          (active() && get(account(uid)).data.active && get(account(uid)).data.role == 'student');
         allow create, update: if student() && own(uid) && request.resource.data.keys().hasOnly(['count'])
           && request.resource.data.count is int
           && getAfter(summaryPath(plan, uid)).data.count == request.resource.data.count
@@ -101,7 +104,8 @@ service cloud.firestore {
         allow read: if teacher() || (student() && own(uid));
         function validDay(d) {
           let schedule = get(planPath(plan)).data;
-          return d.keys().hasOnly(['index', 'at']) && d.index is int
+          return schedule.get('archived', false) == false
+            && d.keys().hasOnly(['index', 'at']) && d.index is int
             && d.index >= 0 && d.index < schedule.days.size() && key == string(d.index)
             && schedule.start + d.index * 86400000 <= request.time.toMillis()
             && d.at == request.time
@@ -133,6 +137,7 @@ service cloud.firestore {
           && active() && d.uid == request.auth.uid && d.status == 'approved'
           && d.createdAt == request.time && d.body is string && d.body.size() >= 1 && d.body.size() <= 1800
           && d.planId is string && d.dayIndex is int && d.dayIndex >= 0 && d.dayIndex < plan.days.size()
+          && plan.get('archived', false) == false
           && plan.start + d.dayIndex * 86400000 <= request.time.toMillis();
       }
       allow create: if chapterPost(request.resource.data);
