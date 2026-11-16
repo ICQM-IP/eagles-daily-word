@@ -87,26 +87,35 @@ service cloud.firestore {
     function visibleComment() {
       return active() && (resource.data.status == 'approved' || resource.data.uid == request.auth.uid);
     }
-    function pendingComment(d) {
+    function publishedComment(d) {
       return active() && d.keys().hasOnly(['uid', 'body', 'status', 'createdAt'])
-        && d.uid == request.auth.uid && d.status == 'pending' && d.createdAt == request.time
+        && d.uid == request.auth.uid && d.status == 'approved' && d.createdAt == request.time
         && d.body is string && d.body.size() >= 1 && d.body.size() <= 1800;
     }
     function moderation() {
       return teacher() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && ((resource.data.status == 'pending' && request.resource.data.status in ['approved', 'rejected'])
-          || (resource.data.status == 'approved' && request.resource.data.status == 'hidden'));
+          || (resource.data.status in ['pending', 'approved', 'rejected'] && request.resource.data.status == 'hidden')
+          || (resource.data.status == 'hidden' && request.resource.data.status == 'approved'));
     }
     match /posts/{post} {
       allow read: if teacher() || visibleComment();
-      allow create: if pendingComment(request.resource.data);
+      function chapterPost(d) {
+        let plan = get(planPath(d.planId)).data;
+        return d.keys().hasOnly(['uid', 'body', 'status', 'createdAt', 'planId', 'dayIndex'])
+          && active() && d.uid == request.auth.uid && d.status == 'approved'
+          && d.createdAt == request.time && d.body is string && d.body.size() >= 1 && d.body.size() <= 1800
+          && d.planId is string && d.dayIndex is int && d.dayIndex >= 0 && d.dayIndex < plan.days.size()
+          && plan.start + d.dayIndex * 86400000 <= request.time.toMillis();
+      }
+      allow create: if chapterPost(request.resource.data);
       allow update: if moderation();
       match /replies/{reply} {
         function openThread() {
           return get(/databases/$(database)/documents/posts/$(post)).data.status == 'approved';
         }
         allow read: if teacher() || (openThread() && visibleComment());
-        allow create: if pendingComment(request.resource.data) && openThread();
+        allow create: if publishedComment(request.resource.data) && openThread();
         allow update: if moderation() && (request.resource.data.status != 'approved' || openThread());
       }
     }
