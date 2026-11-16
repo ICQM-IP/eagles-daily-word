@@ -12,8 +12,8 @@ service cloud.firestore {
         && d.nickname is string && d.nickname.size() >= 1 && d.nickname.size() <= 32
         && d.active is bool && d.shareProgress is bool;
     }
-    function verifiedEmail(email) {
-      return signedIn() && request.auth.token.email_verified == true
+    function matchesEmail(email) {
+      return signedIn() && request.auth.token.email is string
         && request.auth.token.email.lower() == email;
     }
     function invite(email) { return /databases/$(database)/documents/invites/$(email); }
@@ -21,18 +21,18 @@ service cloud.firestore {
       let email = request.auth.token.email.lower();
       let before = get(invite(email)).data;
       let after = getAfter(invite(email)).data;
-      return own(uid) && verifiedEmail(email) && before.uid == '' && after.uid == uid
+      return own(uid) && matchesEmail(email) && before.uid == '' && after.uid == uid
         && d.nickname == before.nickname && d.active == true;
     }
     match /invites/{email} {
-      allow get: if teacher() || verifiedEmail(email);
+      allow get: if teacher() || matchesEmail(email);
       allow list: if teacher();
       allow create: if teacher() && request.resource.data.keys().hasOnly(['nickname','uid'])
         && email.size() <= 254 && email.matches('^[^@/]+@[^@/]+$') && email == email.lower()
         && request.resource.data.nickname is string && request.resource.data.nickname.size() >= 1
         && request.resource.data.nickname.size() <= 32 && request.resource.data.uid == '';
       allow delete: if teacher() && resource.data.uid == '';
-      allow update: if verifiedEmail(email) && resource.data.uid == ''
+      allow update: if matchesEmail(email) && resource.data.uid == ''
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid'])
         && request.resource.data.uid == request.auth.uid
         && !exists(account(request.auth.uid))
