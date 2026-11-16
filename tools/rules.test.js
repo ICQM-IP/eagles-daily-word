@@ -135,7 +135,7 @@ test('teachers can schedule plans but cannot rewrite historical dates or chapter
   await assertSucceeds(updateDoc(plan(teacher),{title:'更正名稱'}));
 });
 
-test('only a verified invited address can claim a student profile once', async () => {
+test('only a rostered address can claim a student profile once without email verification', async () => {
   const email = 'eagle@example.org';
   const ticket = (db) => doc(db,'invites',email);
   const invite = {nickname:'Eagle',uid:''};
@@ -146,11 +146,10 @@ test('only a verified invited address can claim a student profile once', async (
     batch.update(ticket(db),{uid});
     return batch.commit();
   }
-  const invited = candidate('joiner',email,true);
+  const invited = candidate('joiner',email,false);
   await assertFails(setDoc(ticket(student),invite));
   await assertSucceeds(setDoc(ticket(teacher),invite));
   await assertFails(getDocs(collection(invited,'invites')));
-  await assertFails(claim(candidate('unverified',email,false),'unverified'));
   await assertFails(claim(candidate('wrong','other@example.org',true),'wrong'));
   await assertFails(claim(invited,'joiner',member('Other')));
   await assertFails(setDoc(account(invited,'joiner'),member('Eagle')));
