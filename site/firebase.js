@@ -2,7 +2,7 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
   browserSessionPersistence, sendPasswordResetEmail, connectAuthEmulator, createUserWithEmailAndPassword} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js';
 import {getFirestore, doc, collection, collectionGroup, query, where, getDoc, getDocs, setDoc,
-  addDoc, updateDoc, runTransaction, serverTimestamp, connectFirestoreEmulator} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js';
+  addDoc, updateDoc, deleteField, runTransaction, serverTimestamp, connectFirestoreEmulator} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js';
 import {firebaseConfig, emulators} from './config.js';
 
 export async function makeFirebase() {
@@ -127,6 +127,7 @@ export async function makeFirebase() {
         transaction.set(target, {...fields, shareProgress:false, role:'student'});
       });
     },
+    archivePlan:(id,archived) => updateDoc(ref('plans',id),{archived:archived ? true : deleteField()}),
     savePlan(plan) {
       const {id, ...fields} = plan;
       return setDoc(ref('plans', id), fields);

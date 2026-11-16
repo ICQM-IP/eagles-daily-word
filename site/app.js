@@ -78,7 +78,7 @@ function loginView() {
 }
 function privacyView() {
   return title('私隱與經文來源') + `<section class="panel prose"><h2>隊內可見資料</h2>
-  <p>獲開通的 Eagles 隊員可以查看其他在籍隊員的暱稱和同意分享的累計進度。學生可在我的帳戶關閉進度分享，暱稱仍會顯示在 Eagles Nest。</p>
+  <p>Eagles Nest 會向已啟用的隊員顯示所有在籍學生的暱稱、已讀章數及成長階段。個人報到明細只供本人及老師查看。</p>
   <p>老師可查看個別報到日期、暱稱、帳戶狀態及待審核內容。分享和回覆會即時向已登入隊員公開，老師可刪除不合適的留言。請在分享中避免提供真名、聯絡方法或其他人的私事。需要更正暱稱或處理個人資料時，請聯絡帶隊老師。</p>
   <h2>聖經譯本</h2><p>本網站所載經文由 eBible.org 的 VPL 文本匯入，並依章節顯示。兩個所採用的數碼文本均由來源標示為公有領域。個別節號或會因譯本的底本而跳號。</p>
   <ul><li><a href="https://ebible.org/bible/details.php?id=cmn-cu89t" target="_blank" rel="noreferrer">繁體中文《新標點和合本》</a></li>
@@ -151,19 +151,18 @@ async function reading(plan, checks, now) {
 }
 async function nest(plan) {
   const members = sortedMembers((await api.members(false)).filter((member) => member.role === 'student'));
-  const shared = members.filter((member) => member.shareProgress);
-  const stats = new Map((await api.progress(plan.id,shared,false)).map((record) => [record.id,record.count]));
+  const stats = new Map((await api.progress(plan.id,members,false)).map((record) => [record.id,record.count]));
   const total = plan.days.length;
-  const sharedTotal = shared.reduce((sum,member) => sum + (stats.get(member.id) ?? 0),0);
-  const stageOf = (member) => member.shareProgress ? stageIndex(stats.get(member.id) ?? 0,total) : -1;
+  const sharedTotal = members.reduce((sum,member) => sum + (stats.get(member.id) ?? 0),0);
+  const stageOf = (member) => stageIndex(stats.get(member.id) ?? 0,total);
   const filtered = members.filter((member) => nestStage === 'all' || String(stageOf(member)) === nestStage);
-  return illustratedTitle('Eagles Nest','敬拜隊的共同閱讀旅程','nest') + `<section class="panel team"><div><p class="eyebrow">隊內共享進度</p><h2>${sharedTotal} <small>章次</small></h2><p class="muted">${shared.length} 位隊員分享進度</p></div>${meter(sharedTotal,Math.max(1,shared.length*total))}</section>
+  return illustratedTitle('Eagles Nest','敬拜隊的共同閱讀旅程','nest') + `<section class="panel team"><div><p class="eyebrow">隊內共享進度</p><h2>${sharedTotal} <small>章次</small></h2><p class="muted">${members.length} 位在籍隊員</p></div>${meter(sharedTotal,Math.max(1,members.length*total))}</section>
   <div class="section-head nest-head"><h2>隊員 <small>${members.length}</small></h2><label>成長階段 <select id="nest-filter"><option value="all">全部</option>${stages.map(([label],i) => `<option value="${i}" ${String(i)===nestStage ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
   <div class="nest-grid">${filtered.map((member) => {
     const count = stats.get(member.id) ?? 0;
     const stage = stageOf(member);
-    return `<article class="panel nest-card">${stage >= 0 ? canvas(stage) : '<div class="private-bird" aria-hidden="true">✦</div>'}<h3>${escape(member.nickname)}</h3>
-    ${stage >= 0 ? `<p>${stages[stage][0]} · ${count} / ${total}</p>${meter(count,total,escape(member.nickname) + '的閱讀進度')}` : '<p>進度設為私人</p>'}</article>`;
+    return `<article class="panel nest-card">${canvas(stage)}<h3>${escape(member.nickname)}</h3>
+    ${'<p>' + stages[stage][0] + ' · ' + count + ' / ' + total + '</p>'}${meter(count,total,escape(member.nickname) + '的閱讀進度')}</article>`;
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }
 function writer(parent = '', plan, index) {
@@ -194,8 +193,7 @@ function account() {
   const teacher = profile.role === 'teacher';
   return title('我的帳戶') + `<section class="panel settings stack"><h2>${escape(profile.nickname)}</h2>
   ${user.email ? '<p class="muted">' + escape(user.email) + '</p>' : ''}
-  ${!teacher ? `<form id="privacy-form" class="stack"><label class="check-label"><input type="checkbox" name="shared" ${profile.shareProgress ? 'checked' : ''}>在 Eagles Nest 顯示我的閱讀進度</label>
-  <small class="muted">隊內仍可看到暱稱，老師可查看個人報到紀錄。</small>${button('儲存私隱設定')}</form>` : ''}
+  ${!teacher ? '<p class="muted">在籍學生的已讀章數及成長階段會在 Eagles Nest 顯示。</p>' : ''}
   ${!api.demo ? '<button class="button secondary" data-action="reset">寄出密碼重設電郵</button>' : ''}
   <a class="text-button" href="#privacy">私隱與經文來源 ↗</a><button class="button secondary" data-action="logout">登出</button></section>`;
 }
@@ -292,12 +290,13 @@ async function moderationThread() {
   region.innerHTML = '<div class="replies">' + (replies.sort((a,b) => a.createdAt-b.createdAt).map((post) => `<article class="reply">${note(post,members,true)}
     ${['approved','hidden'].includes(post.status) ? `<button class="button secondary" data-action="moderate" data-status="${post.status === 'hidden' ? 'approved' : 'hidden'}" data-id="${escape(post.id)}" data-parent="${escape(parent)}">${post.status === 'hidden' ? '還原回覆' : '刪除回覆'}</button>` : ''}</article>`).join('') || '<p class="muted">暫無回覆。</p>') + '</div>';
 }
-function planManager(plans,now) {
+function planManager(plans,now,archived) {
   const plan = plans.find((item) => item.id === editPlan);
   const locked = plan && plan.start <= now;
   return title('讀經計劃','建立及排程每日讀經與倒數計劃。') + `<div class="admin-plan-layout">
   <section class="panel admin-card"><div class="section-head"><h2>計劃紀錄</h2><button class="text-button" data-action="new-plan">＋ 新計劃</button></div>
-  ${[...plans].sort((a,b) => b.start-a.start).map((item) => `<div class="plan-item"><div><strong>${escape(item.title)}</strong><small>${planLabel(item)} · ${item.days.length} 日</small></div><button class="text-button" data-action="edit-plan" data-id="${escape(item.id)}">編輯 ↗</button></div>`).join('') || '<p class="muted">暫無已排程計劃。</p>'}</section>
+  ${[...plans].sort((a,b) => b.start-a.start).map((item) => `<div class="plan-item"><div><strong>${escape(item.title)}</strong><small>${planLabel(item)} · ${item.days.length} 日</small></div><button class="text-button" data-action="edit-plan" data-id="${escape(item.id)}">編輯 ↗</button><button class="text-button" data-action="delete-plan" data-id="${escape(item.id)}">刪除計劃</button></div>`).join('') || '<p class="muted">暫無已排程計劃。</p>'}
+  ${archived.length ? `<details><summary>已刪除的計劃</summary>${archived.map(item => `<div class="plan-item"><strong>${escape(item.title)}</strong><button class="text-button" data-action="restore-plan" data-id="${escape(item.id)}">還原計劃</button></div>`).join('')}</details>` : ''}</section>
   <section class="panel admin-card"><form id="plan-form" class="stack" data-id="${escape(plan?.id)}"><h2>${plan ? '編輯計劃' : '建立計劃'}</h2>
   <label>計劃名稱<input name="title" maxlength="90" required value="${escape(plan?.title)}"></label><label>副標題<input name="subtitle" maxlength="120" value="${escape(plan?.subtitle)}"></label>
   <label>展示方式<select name="mode"><option value="daily">一般每日讀經</option><option value="countdown" ${plan?.mode === 'countdown' ? 'selected' : ''}>倒數日曆</option></select></label>
@@ -332,13 +331,14 @@ async function render({focus=false} = {}) {
     else if (current === 'admin-members') html = await adminMembers();
     else if (current === 'admin-moderation') html = await moderation();
     else {
-      const plans = await api.plans();
+      const allPlans = await api.plans();
+      const plans = allPlans.filter(plan => !plan.archived);
       if (version !== epoch) return;
       latestPlans = plans;
       const now = api.now();
       renderedDate = dateKey(now);
       const plan = plans.find((item) => item.id === selectedPlan) ?? currentPlan(plans,now);
-      if (current === 'admin-plans') html = planManager(plans,now);
+      if (current === 'admin-plans') html = planManager(plans,now,allPlans.filter(plan => plan.archived));
       else if (!plan) html = title('暫無讀經計劃') + (teacher ? link('admin-plans','建立計劃') : '');
       else if (current === 'admin') html = await adminOverview(plan,now);
       else if (current === 'nest') html = await nest(plan);
@@ -465,6 +465,21 @@ async function clickAction(control) {
       selectedStudent = undefined;
       await render();
       break;
+    case 'delete-plan':
+    case 'restore-plan': {
+      if (profile?.role !== 'teacher') return;
+      const removing = action === 'delete-plan';
+      if (removing) {
+        const plan = latestPlans.find(item => item.id === id);
+        if (!plan || !window.confirm('刪除「' + plan.title + '」？計劃會從清單移除，之後可還原。')) return;
+      }
+      await api.archivePlan(id,removing);
+      if (editPlan === id) editPlan = undefined;
+      if (selectedPlan === id) selectedPlan = selectedChapter = undefined;
+      await render();
+      notify(removing ? '計劃已刪除。' : '計劃已還原。');
+      break;
+    }
     case 'edit-plan':
     case 'new-plan':
       editPlan = id;
@@ -568,9 +583,6 @@ document.addEventListener('submit',(event) => {
       const context = form.dataset.plan ? {planId:form.dataset.plan,dayIndex:Number(form.dataset.day)} : undefined;
       await api.post(get('body'),form.dataset.parent || undefined,context);
       confirmation = '已發佈。';
-    } else if (form.id === 'privacy-form') {
-      await api.profile(user.uid,{shareProgress:data.has('shared')});
-      profile = await api.member(user.uid);
     } else if (form.id === 'member-add' || form.dataset.uid) {
       const uid = form.dataset.uid ?? get('uid');
       const nickname = get('nickname');
@@ -607,7 +619,7 @@ async function boot() {
   const response = await fetch('./assets/bible/books.json');
   if (!response.ok) throw Error('無法載入書卷資料。');
   books = await response.json();
-  api = firebaseConfig ? await (await import('./firebase.js?v=20261116-join')).makeFirebase() : makeDemo();
+  api = firebaseConfig ? await (await import('./firebase.js?v=20261116-nest-plans')).makeFirebase() : makeDemo();
   api.observe(async (identity) => {
     const version = ++authEpoch;
     ++epoch;

@@ -59,7 +59,7 @@ export function makeDemo() {
     checks:async (plan, uid) => list(read().checks[plan]?.[uid]),
     progress:async (plan) => {
       const state = read();
-      return Object.keys(state.members).filter((uid) => state.members[uid].shareProgress)
+      return Object.keys(state.members).filter((uid) => state.members[uid].active && state.members[uid].role === 'student')
         .map((uid) => ({id:uid, count:Object.keys(state.checks[plan]?.[uid] ?? {}).length}));
     },
     check(plan, index) {
@@ -91,6 +91,7 @@ export function makeDemo() {
     },
     removeInvite(email) {change(state => {delete state.invites[email];});},
     removeMember(uid) {change(state => {state.members[uid].active = false;});},
+    archivePlan(id,archived) {change(state => {state.plans[id].archived = archived;});},
     savePlan(plan) {change((state) => {state.plans[plan.id] = plan;});},
     posts:async (admin) => threads(null, admin),
     replies:async (parent, admin) => threads(parent, admin),
