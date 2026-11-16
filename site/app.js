@@ -115,10 +115,13 @@ function home(plan, checks, now) {
   ${schedule(plan,done,now)}
   <p class="calendar-note">✓ 已報到 <span>· 可補讀</span><span>– 尚未開放</span></p></section>
   <section class="panel growth ${recentlyFinished ? 'takeoff' : ''}"><div class="section-head"><div><h2>${milestone}</h2></div><span class="badge">階段 ${stage+1} / 7</span></div>
-  <div class="growth-art">${canvas(stage)} </div>
+  <div class="growth-art"><picture class="growth-picture">
+  <source media="(prefers-reduced-motion: reduce)" srcset="./assets/growth-${stage}.png">
+  <img class="bird" src="./assets/growth-${stage}.gif" width="340" height="226" alt="">
+  </picture></div>
   <div class="growth-caption"><div><strong>${stages[stage][0]}</strong><span>${stages[stage][1]}</span></div><b>${count}<small> / ${total}</small></b></div>
   ${meter(count,total)}<div class="milestones" aria-label="七個成長階段">${stages.map(([label],i) =>
-    `<span class="${i === stage ? 'current' : i < stage ? 'past' : ''}" title="${label}" aria-label="${label}">${canvas(i)}</span>`).join('')}</div>
+    `<span class="${i === stage ? 'current' : i < stage ? 'past' : ''}" title="${label}" aria-label="${label}"><img class="bird growth-thumb" src="./assets/growth-${i}.png" width="340" height="226" alt=""></span>`).join('')}</div>
   <div class="growth-link">${link('nest','看看 Eagles Nest →','text-button')}</div></section></div>`;
 }
 async function reading(plan, checks, now) {
@@ -619,7 +622,7 @@ async function boot() {
   const response = await fetch('./assets/bible/books.json');
   if (!response.ok) throw Error('無法載入書卷資料。');
   books = await response.json();
-  api = firebaseConfig ? await (await import('./firebase.js?v=20261116-nest-plans')).makeFirebase() : makeDemo();
+  api = firebaseConfig ? await (await import('./firebase.js?v=20261116-growth')).makeFirebase() : makeDemo();
   api.observe(async (identity) => {
     const version = ++authEpoch;
     ++epoch;
