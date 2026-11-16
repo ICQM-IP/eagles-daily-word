@@ -153,22 +153,25 @@ async function reading(plan, checks, now) {
     </div>${await wall(plan,index)}</section>`;
 }
 async function nest(plan) {
-  const members = sortedMembers((await api.members(false)).filter((member) => member.role === 'student'));
+  const roster = sortedMembers(await api.members(false));
+  const members = roster.filter((member) => member.role === 'student');
+  const teachers = roster.filter((member) => member.role === 'teacher');
   const stats = new Map((await api.progress(plan.id,members,false)).map((record) => [record.id,record.count]));
   const total = plan.days.length;
   const sharedTotal = members.reduce((sum,member) => sum + (stats.get(member.id) ?? 0),0);
   const stageOf = (member) => stageIndex(stats.get(member.id) ?? 0,total);
-  const filtered = members.filter((member) => nestStage === 'all' || String(stageOf(member)) === nestStage);
+  const filtered = nestStage === 'all' ? [...teachers,...members] : members.filter((member) => String(stageOf(member)) === nestStage);
   return illustratedTitle('Eagles Nest','敬拜隊的共同閱讀旅程','nest') + `<section class="panel team"><div><p class="eyebrow">隊內共享進度</p><h2>${sharedTotal} <small>章次</small></h2><p class="muted">${members.length} 位在籍隊員</p></div>${meter(sharedTotal,Math.max(1,members.length*total))}</section>
-  <div class="section-head nest-head"><h2>隊員 <small>${members.length}</small></h2><label>成長階段 <select id="nest-filter"><option value="all">全部</option>${stages.map(([label],i) => `<option value="${i}" ${String(i)===nestStage ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
+  <div class="section-head nest-head"><h2>老師與隊員 <small>${teachers.length + members.length}</small></h2><label>成長階段 <select id="nest-filter"><option value="all">全部</option>${stages.map(([label],i) => `<option value="${i}" ${String(i)===nestStage ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
   <div class="nest-grid">${filtered.map((member) => {
     const count = stats.get(member.id) ?? 0;
-    const stage = stageOf(member);
+    const teacher = member.role === 'teacher';
+    const stage = teacher ? stages.length - 1 : stageOf(member);
     return `<article class="panel nest-card"><picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="./assets/growth-${stage}.png">
     <img class="bird nest-animation" src="./assets/growth-${stage}.gif" width="340" height="226" loading="lazy" decoding="async" alt="">
     </picture><h3>${escape(member.nickname)}</h3>
-    ${'<p>' + stages[stage][0] + ' · ' + count + ' / ' + total + '</p>'}${meter(count,total,escape(member.nickname) + '的閱讀進度')}</article>`;
+    ${teacher ? '<span class="badge">老師</span>' : `<p>${stages[stage][0]} · ${count} / ${total}</p>${meter(count,total,escape(member.nickname) + '的閱讀進度')}`}</article>`;
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }
 function writer(parent = '', plan, index) {
