@@ -254,3 +254,5 @@ footer span{letter-spacing:.12em;font-weight:700}
 }
 @media(max-width:360px){.schedule:not(.daily){grid-template-columns:repeat(4,minmax(0,1fr))}.nest-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.demo-bar>div>span{max-width:5rem}.reading-actions .button{padding:.5rem;font-size:.74rem}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+.chapter-discussion{margin-top:2rem}.chapter-discussion>.wall{max-width:none}.identity{flex-wrap:wrap}.identity .text-button{font-size:.8rem;white-space:nowrap}

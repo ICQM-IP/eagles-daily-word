@@ -94,7 +94,7 @@ export async function makeFirebase() {
       const snapshot = await getDocs(query(collectionGroup(db, 'replies'), where('status', '==', 'pending')));
       return snapshot.docs.map((item) => ({...record(item), parent:item.ref.parent.parent.id}));
     },
-    post:(body, parent) => addDoc(comments(parent), {uid:account(), body, status:'pending', createdAt:serverTimestamp()}),
+    post:(body, parent, context) => addDoc(comments(parent), {uid:account(), body, status:'approved', createdAt:serverTimestamp(), ...(!parent && context ? context : {})}),
     moderate:(id, status, parent) => updateDoc(commentRef(id, parent), {status}),
   };
 }

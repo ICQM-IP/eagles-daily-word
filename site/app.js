@@ -16,8 +16,8 @@ const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
 const glyphs = {home:'⌂', read:'▤', nest:'♧', wall:'☷', account:'○', admin:'⚙'};
 const navigation = [['home','首頁'],['read','讀經'],['nest','Eagles Nest'],['wall','分享牆'],['account','我的帳戶']];
-const adminNav = [['admin','概覽'],['admin-members','隊員'],['admin-moderation','審核'],['admin-plans','計劃']];
-const labels = {pending:'待審核',approved:'已公開',rejected:'未通過',hidden:'已隱藏'};
+const adminNav = [['admin','概覽'],['admin-members','隊員'],['admin-moderation','留言管理'],['admin-plans','計劃']];
+const labels = {pending:'待審核',approved:'已公開',rejected:'未通過',hidden:'已刪除'};
 const statusBadge = (status) => '<span class="badge">' + labels[status] + '</span>';
 const button = (contents, classes = 'button') => '<button class="' + classes + '">' + contents + '</button>';
 const link = (route, label, classes = 'button') => '<a class="' + classes + '" href="#' + route + '">' + label + '</a>';
@@ -30,6 +30,7 @@ let api, user, profile, books;
 let lang = local.getItem('eagles-lang') === 'en' ? 'en' : 'zh';
 let font = ['small','normal','large'].includes(local.getItem('eagles-font')) ? local.getItem('eagles-font') : 'normal';
 let selectedPlan, selectedChapter, openThread, editPlan, selectedStudent;
+let studentView = sessionStorage.getItem('eagles-teacher-view') === 'student';
 let recentlyFinished = false;
 let nestStage = 'all';
 let epoch = 0;
@@ -56,11 +57,12 @@ function navLinks(items, current) {
 }
 function shell(current) {
   const teacher = profile?.role === 'teacher';
+  const adminView = teacher && !studentView;
   const canEnter = user && profile?.active;
   header.innerHTML = `<div class="masthead">
-    <a class="brand" href="#${teacher ? 'admin' : 'home'}"><span class="brand-mark" aria-hidden="true">✦</span><span>Eagles <strong>Daily Word</strong><small>READ TOGETHER · GROW IN FAITH</small></span></a>
-    ${canEnter ? '<nav aria-label="主選單">' + navLinks(teacher ? adminNav : navigation, current) + '</nav>' : ''}
-    ${canEnter ? `<div class="identity"><span>${escape(profile.nickname)}</span><a href="#account" aria-label="我的帳戶">${escape([...profile.nickname][0])}</a></div>` : ''}
+    <a class="brand" href="#${adminView ? 'admin' : 'home'}"><span class="brand-mark" aria-hidden="true">✦</span><span>Eagles <strong>Daily Word</strong><small>READ TOGETHER · GROW IN FAITH</small></span></a>
+    ${canEnter ? '<nav aria-label="主選單">' + navLinks(adminView ? adminNav : navigation, current) + '</nav>' : ''}
+    ${canEnter ? `<div class="identity">${teacher ? `<button class="text-button" data-action="teacher-view">${studentView ? '返回老師後台' : '切換學生版'}</button>` : ''}<span>${escape(profile.nickname)}</span><a href="#account" aria-label="我的帳戶">${escape([...profile.nickname][0])}</a></div>` : ''}
   </div>${api.demo ? `<div class="demo-bar"><div><span><strong>示範模式</strong> · 虛構隊員資料</span>
     <div class="demo-controls"><label>示範日期 <input type="date" id="demo-date" value="${dateKey(api.now())}"></label>
     <button data-action="demo-role" data-id="${teacher ? 'student' : 'teacher'}">${teacher ? '切換學生版' : '切換老師版'} ↗</button></div></div></div>` : ''}`;
@@ -76,7 +78,7 @@ function loginView() {
 function privacyView() {
   return title('私隱與經文來源') + `<section class="panel prose"><h2>隊內可見資料</h2>
   <p>獲開通的 Eagles 隊員可以查看其他在籍隊員的暱稱和同意分享的累計進度。學生可在我的帳戶關閉進度分享，暱稱仍會顯示在 Eagles Nest。</p>
-  <p>老師可查看個別報到日期、暱稱、帳戶狀態及待審核內容。分享或回覆經老師審核後才會向已登入隊員公開。請在分享中避免提供真名、聯絡方法或其他人的私事。需要更正暱稱或處理個人資料時，請聯絡帶隊老師。</p>
+  <p>老師可查看個別報到日期、暱稱、帳戶狀態及待審核內容。分享和回覆會即時向已登入隊員公開，老師可刪除不合適的留言。請在分享中避免提供真名、聯絡方法或其他人的私事。需要更正暱稱或處理個人資料時，請聯絡帶隊老師。</p>
   <h2>聖經譯本</h2><p>本網站所載經文由 eBible.org 的 VPL 文本匯入，並依章節顯示。兩個所採用的數碼文本均由來源標示為公有領域。個別節號或會因譯本的底本而跳號。</p>
   <ul><li><a href="https://ebible.org/bible/details.php?id=cmn-cu89t" target="_blank" rel="noreferrer">繁體中文《新標點和合本》</a></li>
   <li><a href="https://ebible.org/details.php?id=eng-web" target="_blank" rel="noreferrer">World English Bible Classic</a>（名稱為 eBible.org 的商標）</li></ul></section>`;
@@ -142,9 +144,9 @@ async function reading(plan, checks, now) {
     <p class="muted"><small>${lang === 'zh' ? '新標點和合本' : 'World English Bible Classic'} · 公有領域 · <a href="#privacy">經文來源</a></small></p>
     </div><div class="reading-actions">
       <button class="button secondary" data-action="chapter" data-id="${index-1}" ${index === 0 ? 'disabled' : ''}>← 上一章</button>
-      ${done.has(index) ? '<span class="badge complete">✓ 已報到</span>' : `<button class="button" data-action="check" data-id="${index}">${sameDay ? '今日報到' : '完成補讀'} ✓</button>`}
+      ${profile.role === 'teacher' ? '<span class="badge">老師瀏覽模式 · 不記錄學生報到</span>' : done.has(index) ? '<span class="badge complete">✓ 已報到</span>' : `<button class="button" data-action="check" data-id="${index}">${sameDay ? '今日報到' : '完成補讀'} ✓</button>`}
       <button class="button secondary" data-action="chapter" data-id="${index+1}" ${readable(plan,index+1,now) ? '' : 'disabled'}>下一章 →</button>
-    </div></section>`;
+    </div>${await wall(plan,index)}</section>`;
 }
 async function nest(plan) {
   const members = sortedMembers((await api.members(false)).filter((member) => member.role === 'student'));
@@ -163,23 +165,29 @@ async function nest(plan) {
     ${stage >= 0 ? `<p>${stages[stage][0]} · ${count} / ${total}</p>${meter(count,total,escape(member.nickname) + '的閱讀進度')}` : '<p>進度設為私人</p>'}</article>`;
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }
-function writer(parent = '') {
-  return `<form id="${parent ? 'reply-form' : 'post-form'}" class="stack writer" data-parent="${escape(parent)}">
+function writer(parent = '', plan, index) {
+  return `<form id="${parent ? 'reply-form' : 'post-form'}" class="stack writer" data-parent="${escape(parent)}" data-plan="${escape(plan?.id)}" data-day="${index ?? ''}">
   <label>${parent ? '回覆' : '寫下分享'}<textarea name="body" maxlength="1800" rows="${parent ? 2 : 3}" required></textarea></label>
-  <div class="form-end"><small class="muted">經老師審核後公開</small>${button(parent ? '送出回覆' : '送出分享')}</div></form>`;
+  <div class="form-end"><small class="muted">即時發佈給隊員 · 老師可刪除留言</small>${button(parent ? '送出回覆' : '送出分享')}</div></form>`;
 }
 function note(post, members, admin = false) {
   return `<div class="note-meta"><strong>${escape(members.get(post.uid) ?? '隊員')}</strong><time>${stamp(post.createdAt)}</time>${admin || post.status !== 'approved' ? statusBadge(post.status) : ''}</div><p class="post-body">${escape(post.body)}</p>`;
 }
-async function wall() {
-  const [posts,membership] = await Promise.all([api.posts(false),api.members(false)]);
-  const members = new Map(membership.map((member) => [member.id,member.nickname]));
-  const expanded = posts.find((post) => post.id === openThread && post.status === 'approved');
-  const replies = expanded ? await api.replies(openThread,false) : [];
-  return illustratedTitle('Eagles 分享牆','已登入的隊員可以在這裡自由分享、彼此鼓勵。','letter') + `<div class="wall"><section class="panel">${writer()}</section>
-  ${posts.sort((a,b) => b.createdAt-a.createdAt).map((post) => `<article class="panel post">${note(post,members)}
-  ${post.status === 'approved' ? `<button class="text-button" data-action="thread" data-id="${escape(post.id)}" aria-expanded="${expanded?.id === post.id}">${expanded?.id === post.id ? '收起回覆' : '查看與回覆'} ↗</button>` : ''}
-  ${expanded?.id === post.id ? `<div class="replies">${replies.sort((a,b) => a.createdAt-b.createdAt).map((reply) => '<div class="reply">' + note(reply,members) + '</div>').join('')}${writer(post.id)}</div>` : ''}</article>`).join('') || '<p class="muted">暫時未有分享。</p>'}</div>`;
+function deleteButton(post, parent = '') {
+  return profile.role === 'teacher' && post.status !== 'hidden' ? '<button class="text-button" data-action="moderate" data-status="hidden" data-id="' + escape(post.id) + '" data-parent="' + escape(parent) + '">刪除留言</button>' : '';
+}
+async function wall(plan, index) {
+  const [allPosts,membership] = await Promise.all([api.posts(false),api.members(false)]);
+  const posts = allPosts.filter(post => post.status !== 'hidden' && (!plan || (post.planId === plan.id && post.dayIndex === index)));
+  const members = new Map(membership.map(member => [member.id,member.nickname]));
+  const expanded = posts.find(post => post.id === openThread && post.status === 'approved');
+  const replies = expanded ? (await api.replies(openThread,false)).filter(reply => reply.status !== 'hidden') : [];
+  const heading = plan ? '<h2>本章留言</h2><p class="muted">Day ' + (index+1) + ' · ' + escape(chapterName(plan.days[index])) + '</p>' : illustratedTitle('Eagles 分享牆','每日經文下面可發表留言，這裡集中顯示所有分享。','letter');
+  return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
+    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + (!plan && post.planId ? '<p class="eyebrow">Day ' + (post.dayIndex+1) + ' · ' + escape(post.planId) + '</p>' : '') + note(post,members) + deleteButton(post) +
+      (post.status === 'approved' ? '<button class="text-button" data-action="thread" data-id="' + escape(post.id) + '" aria-expanded="' + (expanded?.id === post.id) + '">' + (expanded?.id === post.id ? '收起回覆' : '查看與回覆') + ' ↗</button>' : '') +
+      (expanded?.id === post.id ? '<div class="replies">' + replies.sort((a,b) => a.createdAt-b.createdAt).map(reply => '<div class="reply">' + note(reply,members) + deleteButton(reply,post.id) + '</div>').join('') + writer(post.id) + '</div>' : '') + '</article>').join('') +
+    (posts.length ? '' : '<p class="muted">暫時未有分享，歡迎留下你的讀經感想。</p>') + '</div></section>';
 }
 function account() {
   const teacher = profile.role === 'teacher';
@@ -205,7 +213,7 @@ async function adminOverview(plan, now) {
   const checks = learner ? await api.checks(plan.id,learner.id) : [];
   const attendance = new Map(checks.map((record) => [record.index,record.at]));
   return title('老師管理後台',escape(plan.title) + ' · ' + planLabel(plan)) + `<div class="stats">
-  ${[[active.length,'在籍隊員'],[chapters,'在籍隊員累計章次'],[opened ? Math.round(100*chapters/Math.max(1,opened*active.length))+'%' : '—','已開放章節報到率'],[posts.filter((post) => post.status === 'pending').length+replies.length,'待審核內容']].map(
+  ${[[active.length,'在籍隊員'],[chapters,'在籍隊員累計章次'],[opened ? Math.round(100*chapters/Math.max(1,opened*active.length))+'%' : '—','已開放章節報到率'],[posts.filter((post) => post.status === 'pending').length+replies.length,'舊版待審內容']].map(
     ([value,label]) => `<div class="panel stat"><strong>${value}</strong><span>${label}</span></div>`).join('')}</div>
   ${learner ? `<section class="panel admin-card" id="student-record"><div class="section-head"><h2>${escape(learner.nickname)} · 個人報到</h2><button class="text-button" data-action="close-record">收起</button></div>
   ${table(['日次','章節','狀態','報到時間（香港）'],plan.days.map((ref,index) => [
@@ -232,11 +240,11 @@ async function moderation() {
   const threadById = new Map(posts.map((post) => [post.id,post]));
   const pending = [...posts.filter((post) => post.status === 'pending'),...replies].sort((a,b) => a.createdAt-b.createdAt);
   const action = (post,status,label,classes = 'button secondary') => `<button class="${classes}" data-action="moderate" data-id="${escape(post.id)}" data-parent="${escape(post.parent)}" data-status="${status}">${label}</button>`;
-  return title('分享審核',pending.length + ' 則分享或回覆待審核') + `<div class="wall">
+  return title('留言管理','新留言及回覆即時發佈；可刪除或還原。' + (pending.length ? '另有 ' + pending.length + ' 則舊版待審內容。' : '')) + `<div class="wall">
   ${pending.map((post) => `<article class="panel post">${post.parent ? '<p class="quote">回覆 · ' + escape(threadById.get(post.parent)?.body?.slice(0,100) ?? '') + '</p>' : '<p class="eyebrow">分享</p>'}
   ${note(post,members,true)}<div class="row">${(!post.parent || threadById.get(post.parent)?.status === 'approved') ? action(post,'approved','批准','button') : ''}${action(post,'rejected','拒絕')}</div></article>`).join('') || '<div class="panel blank">目前沒有待審核內容。</div>'}
   <section class="panel admin-card"><h2>已處理的分享</h2>${posts.filter((post) => post.status !== 'pending').sort((a,b) => b.createdAt-a.createdAt).map((post) => `<article class="post archive-post">${note(post,members,true)}
-  <div class="row">${post.status === 'approved' ? action(post,'hidden','隱藏分享') : ''}<button class="text-button" data-action="admin-replies" data-id="${escape(post.id)}">查看回覆 ↗</button></div>
+  <div class="row">${post.status === 'approved' ? action(post,'hidden','刪除留言') : post.status === 'hidden' ? action(post,'approved','還原留言') : ''}<button class="text-button" data-action="admin-replies" data-id="${escape(post.id)}">查看回覆 ↗</button></div>
   ${openThread === post.id ? '<div id="admin-thread"></div>' : ''}</article>`).join('') || '<p class="muted">暫無紀錄。</p>'}</section></div>`;
 }
 async function moderationThread() {
@@ -246,7 +254,7 @@ async function moderationThread() {
   const [replies,membership] = await Promise.all([api.replies(parent,true),api.members(true)]);
   const members = new Map(membership.map((member) => [member.id,member.nickname]));
   region.innerHTML = '<div class="replies">' + (replies.sort((a,b) => a.createdAt-b.createdAt).map((post) => `<article class="reply">${note(post,members,true)}
-    ${post.status === 'approved' ? `<button class="button secondary" data-action="moderate" data-status="hidden" data-id="${escape(post.id)}" data-parent="${escape(parent)}">隱藏回覆</button>` : ''}</article>`).join('') || '<p class="muted">暫無回覆。</p>') + '</div>';
+    ${['approved','hidden'].includes(post.status) ? `<button class="button secondary" data-action="moderate" data-status="${post.status === 'hidden' ? 'approved' : 'hidden'}" data-id="${escape(post.id)}" data-parent="${escape(parent)}">${post.status === 'hidden' ? '還原回覆' : '刪除回覆'}</button>` : ''}</article>`).join('') || '<p class="muted">暫無回覆。</p>') + '</div>';
 }
 function planManager(plans,now) {
   const plan = plans.find((item) => item.id === editPlan);
@@ -271,7 +279,8 @@ async function render({focus=false} = {}) {
   const version = ++epoch;
   const actual = route();
   const teacher = profile?.role === 'teacher';
-  const current = actual === 'home' && teacher ? 'admin' : actual;
+  if (teacher && actual.startsWith('admin')) studentView = false;
+  const current = actual === 'home' && teacher && !studentView ? 'admin' : actual;
   main.setAttribute('aria-busy','true');
   shell(current);
   try {
@@ -281,7 +290,7 @@ async function render({focus=false} = {}) {
     else if (!profile?.active) html = title('帳戶尚未開通','請聯絡帶隊老師開通或恢復帳戶。') +
       '<button class="button" data-action="logout">登出</button>';
     else if (current === 'account') html = account();
-    else if (teacher ? ['wall','read','nest'].includes(current) : current.startsWith('admin')) {
+    else if (!teacher && current.startsWith('admin')) {
       html = title('此頁需要相應的帳戶權限') + link(teacher ? 'admin' : 'home','返回首頁');
     } else if (current === 'wall') html = await wall();
     else if (current === 'admin-members') html = await adminMembers();
@@ -298,12 +307,12 @@ async function render({focus=false} = {}) {
       else if (current === 'admin') html = await adminOverview(plan,now);
       else if (current === 'nest') html = await nest(plan);
       else if (current === 'home' || current === 'read') {
-        const checks = await api.checks(plan.id,user.uid);
+        const checks = teacher ? [] : await api.checks(plan.id,user.uid);
         if (version !== epoch) return;
         html = current === 'read' ? await reading(plan,checks,now) : home(plan,checks,now);
       } else html = title('找不到頁面') + link(teacher ? 'admin' : 'home','返回首頁');
       if (plan && ['home','read','nest','admin'].includes(current)) {
-        picker = `<div class="subhead"><div class="breadcrumb"><span>EAGLES DAILY WORD</span><b>／</b>${teacher ? '老師後台' : '我的讀經手帳'}</div>
+        picker = `<div class="subhead"><div class="breadcrumb"><span>EAGLES DAILY WORD</span><b>／</b>${teacher && !studentView ? '老師後台' : teacher ? '學生版面 · 老師瀏覽' : '我的讀經手帳'}</div>
         <div class="plan-controls">${selectedPlan ? '<button class="text-button" data-action="current-plan">返回目前計劃</button>' : ''}${planOptions(plans,plan)}</div></div>`;
       }
     }
@@ -351,6 +360,13 @@ async function mutate(control, action) {
 async function clickAction(control) {
   const {action,id,parent,status} = control.dataset;
   switch (action) {
+    case 'teacher-view':
+      if (profile?.role !== 'teacher') return;
+      studentView = !studentView;
+      sessionStorage.setItem('eagles-teacher-view',studentView ? 'student' : 'teacher');
+      openThread = undefined;
+      await goto(studentView ? 'home' : 'admin');
+      break;
     case 'demo-role':
       api.login(id);
       break;
@@ -379,6 +395,7 @@ async function clickAction(control) {
       break;
     }
     case 'check': {
+      if (profile.role === 'teacher') throw Error('老師瀏覽模式不記錄學生報到。');
       const plan = activePlan();
       if (!readable(plan,+id,api.now())) throw Error('此章尚未開放。');
       await api.check(plan,+id);
@@ -401,7 +418,7 @@ async function clickAction(control) {
     case 'moderate':
       await api.moderate(id,status,parent || undefined);
       await render();
-      notify('審核結果已儲存。');
+      notify(status === 'hidden' ? '留言已刪除，可在留言管理還原。' : '留言狀態已更新。');
       break;
     case 'record':
       selectedStudent = id;
@@ -474,8 +491,9 @@ document.addEventListener('submit',(event) => {
     let confirmation = '已儲存。';
     if (form.id === 'post-form' || form.id === 'reply-form') {
       if (!get('body')) throw Error('請輸入分享內容。');
-      await api.post(get('body'),form.dataset.parent || undefined);
-      confirmation = '已送出，等候老師審核。';
+      const context = form.dataset.plan ? {planId:form.dataset.plan,dayIndex:Number(form.dataset.day)} : undefined;
+      await api.post(get('body'),form.dataset.parent || undefined,context);
+      confirmation = '已發佈。';
     } else if (form.id === 'privacy-form') {
       await api.profile(user.uid,{shareProgress:data.has('shared')});
       profile = await api.member(user.uid);
@@ -532,7 +550,7 @@ async function boot() {
       profile = member;
       if (api.demo && route() !== 'privacy') {
         history.replaceState(null,'',profile?.role === 'teacher' ? '#admin' : '#home');
-      } else if (profile?.role === 'teacher' && !['account','privacy'].includes(route())) {
+      } else if (profile?.role === 'teacher' && !studentView && !['account','privacy'].includes(route())) {
         history.replaceState(null,'','#admin');
       }
       await render();

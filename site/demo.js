@@ -81,10 +81,10 @@ export function makeDemo() {
     replies:async (parent, admin) => threads(parent, admin),
     replyQueue:async () => Object.keys(read().replies).flatMap((parent) =>
       threads(parent, true).filter((post) => post.status === 'pending').map((post) => ({...post, parent}))),
-    post(body, parent) {
+    post(body, parent, context) {
       change((state) => {
         const collection = parent ? (state.replies[parent] ??= {}) : state.posts;
-        collection[crypto.randomUUID()] = {body, uid:actor(), status:'pending', createdAt:this.now()};
+        collection[crypto.randomUUID()] = {body, uid:actor(), status:'approved', createdAt:this.now(), ...(!parent && context ? context : {})};
       });
     },
     moderate(id, status, parent) {
