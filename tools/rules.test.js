@@ -2,7 +2,7 @@ import {after, before, test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
-import {collection, collectionGroup, doc, getDoc, getDocs, query, serverTimestamp,
+import {collection, collectionGroup, deleteField, doc, getDoc, getDocs, query, serverTimestamp,
   setDoc, updateDoc, where, writeBatch} from 'firebase/firestore';
 import {DAY, dateKey, midnight} from '../site/model.js';
 
@@ -80,8 +80,11 @@ test('atomic check-in validates dates, identity, key, increment and count-only p
   await assertFails(getDocs(collection(peer,'plans','luke','nest')));
   await assertFails(getDoc(nest(visitor,'student')));
   await assertSucceeds(getDoc(check(teacher,'student',0)));
-  await assertSucceeds(updateDoc(account(student,'student'),{shareProgress:false}));
-  await assertFails(getDoc(nest(peer,'student')));
+  await assertFails(updateDoc(account(student,'student'),{shareProgress:false}));
+  await env.withSecurityRulesDisabled(async context => {
+    await updateDoc(account(context.firestore(),'student'),{shareProgress:false});
+  });
+  await assertSucceeds(getDoc(nest(peer,'student')));
   await assertSucceeds(getDoc(nest(student,'student')));
   await assertSucceeds(getDoc(nest(teacher,'student')));
 });
@@ -160,4 +163,17 @@ test('only a rostered address can claim a student profile once without email ver
   await assertFails(claim(invited,'joiner'));
   await assertSucceeds(updateDoc(account(teacher,'joiner'),{active:true}));
   await assertSucceeds(getDoc(plan(invited)));
+});
+
+test('only teachers can remove a plan and restore its existing records', async () => {
+  await assertFails(updateDoc(plan(student),{archived:true}));
+  await assertSucceeds(updateDoc(plan(teacher),{archived:true}));
+  await assertFails(updateDoc(plan(teacher),{archived:deleteField(),title:'Changed during restore'}));
+  await assertFails(batchCheck(peer,'peer',0,1));
+  await assertFails(setDoc(post(peer,'archived-plan'),{
+    planId:'luke', dayIndex:0, uid:'peer', body:'Test', status:'approved', createdAt:serverTimestamp(),
+  }));
+  await assertSucceeds(getDoc(check(teacher,'student',0)));
+  await assertSucceeds(updateDoc(plan(teacher),{archived:deleteField()}));
+  await assertSucceeds(batchCheck(peer,'peer',0,1));
 });
