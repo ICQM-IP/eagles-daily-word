@@ -69,7 +69,7 @@ service cloud.firestore {
     }
     match /plans/{plan} {
       allow read: if active();
-      allow create: if teacher() && planShape(request.resource.data) && request.resource.data.start > request.time.toMillis();
+      allow create: if teacher() && planShape(request.resource.data);
       allow update: if teacher() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived'])
           && (!request.resource.data.keys().hasAny(['archived']) || request.resource.data.archived == true))
