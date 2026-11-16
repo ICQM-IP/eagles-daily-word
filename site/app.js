@@ -164,7 +164,10 @@ async function nest(plan) {
   <div class="nest-grid">${filtered.map((member) => {
     const count = stats.get(member.id) ?? 0;
     const stage = stageOf(member);
-    return `<article class="panel nest-card">${canvas(stage)}<h3>${escape(member.nickname)}</h3>
+    return `<article class="panel nest-card"><picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="./assets/growth-${stage}.png">
+    <img class="bird nest-animation" src="./assets/growth-${stage}.gif" width="340" height="226" loading="lazy" decoding="async" alt="">
+    </picture><h3>${escape(member.nickname)}</h3>
     ${'<p>' + stages[stage][0] + ' · ' + count + ' / ' + total + '</p>'}${meter(count,total,escape(member.nickname) + '的閱讀進度')}</article>`;
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }

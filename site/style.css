@@ -145,6 +145,7 @@ progress::-moz-progress-bar{background:#ad8043;border-radius:99px}
 .nest-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.85rem}
 .nest-card{text-align:center;min-width:0;padding:.7rem .8rem 1rem;background:linear-gradient(#fff5df,#fffcf5 66%);box-shadow:2px 3px #c6a57338}
 .nest-card .bird{max-width:125px;margin-inline:auto}
+.nest-card .nest-animation{display:block;height:auto;border-radius:8px}
 .nest-card p{font-size:.78rem;color:var(--muted);margin:.3rem 0 .6rem}
 .private-bird{display:grid;place-items:center;height:74px;color:#a47f48;font-size:1.6rem}
 .wall{display:grid;gap:.85rem}
