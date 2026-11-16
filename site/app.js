@@ -31,6 +31,7 @@ let lang = local.getItem('eagles-lang') === 'en' ? 'en' : 'zh';
 let font = ['small','normal','large'].includes(local.getItem('eagles-font')) ? local.getItem('eagles-font') : 'normal';
 let selectedPlan, selectedChapter, openThread, editPlan, selectedStudent;
 let studentView = sessionStorage.getItem('eagles-teacher-view') === 'student';
+let rosterPreview;
 let recentlyFinished = false;
 let nestStage = 'all';
 let epoch = 0;
@@ -70,10 +71,10 @@ function shell(current) {
 function loginView() {
   if (api.demo) return title('Eagles Daily Word') + `<section class="panel login"><button class="button" data-action="demo-role" data-id="student">進入學生示範</button> <button class="button secondary" data-action="demo-role" data-id="teacher">進入老師示範</button></section>`;
   return `<section class="login-layout"><div class="login-art"><h1>Eagles<br>Daily Word</h1>${bookSticker('login-sticker')}</div>
-  <form class="panel login stack" id="login-form"><h2>隊員登入</h2><p class="muted">使用老師已開通的電郵帳戶。</p>
+  <form class="panel login stack" id="login-form"><h2>隊員登入</h2><p class="muted">使用老師登記的學校電郵。首次加入請先登記及驗證電郵。</p>
   <label>電郵<input name="email" type="email" autocomplete="username" required></label>
   <label>密碼<input name="password" type="password" autocomplete="current-password" required></label>
-  ${button('登入')}<button type="button" class="text-button" data-action="reset">忘記密碼</button></form></section>`;
+  ${button('登入')}<button type="submit" class="button secondary" name="register" value="yes">首次加入</button><button type="button" class="text-button" data-action="reset">忘記密碼</button></form></section>`;
 }
 function privacyView() {
   return title('私隱與經文來源') + `<section class="panel prose"><h2>隊內可見資料</h2>
@@ -227,12 +228,47 @@ async function adminOverview(plan, now) {
     `<button class="text-button" data-action="record" data-id="${escape(student.id)}">查看報到 ↗</button>`,
   ]))}</section>`;
 }
+function parseRoster(raw) {
+  const rows = [];
+  const errors = [];
+  const seen = new Set();
+  raw.split(/\r?\n/).forEach((line,index) => {
+    if (!line.trim()) return;
+    const fields = line.split(line.includes('\t') ? '\t' : ',').map(x => x.trim());
+    const [address,nickname] = fields;
+    if (/^(電郵|學校電郵|email)$/i.test(address) && /^(暱稱|nickname)$/i.test(nickname)) return;
+    const email = address.toLowerCase();
+    if (fields.length !== 2 || !/^[^\s@/,]+@[^\s@/,]+\.[^\s@/,]+$/.test(email) || email.length > 254 || !nickname || Array.from(nickname).length > 32) {
+      errors.push('第 ' + (index+1) + ' 行：請輸入有效電郵及 1–32 字暱稱。');
+    } else if (seen.has(email)) {
+      errors.push('第 ' + (index+1) + ' 行：電郵重複。');
+    } else {
+      seen.add(email);
+      rows.push({email,nickname});
+    }
+  });
+  if (rows.length > 100) errors.push('每次最多加入 100 位隊員。');
+  return {rows,errors};
+}
 async function adminMembers() {
-  const members = sortedMembers((await api.members(true)).filter((member) => member.role === 'student'));
-  return title('隊員管理','以 Firebase Authentication UID 開通隊員，並設定隊內暱稱。') +
-    `<section class="panel admin-card"><form id="member-add" class="member-form"><label>Firebase UID<input name="uid" maxlength="128" required></label><label>暱稱<input name="nickname" maxlength="32" required></label>${button('開通學生')}</form></section>
-    <section class="panel admin-card"><h2>學生帳戶 · ${members.length}</h2><div class="member-list">${members.map((member) => `<form class="member-form" data-uid="${escape(member.id)}"><label>暱稱<input name="nickname" maxlength="32" required value="${escape(member.nickname)}"></label>
-    <label class="check-label"><input type="checkbox" name="active" ${member.active ? 'checked' : ''}>帳戶啟用</label><span class="muted">進度${member.shareProgress ? '隊內可見' : '私人'}</span>${button('儲存','button secondary')}</form>`).join('')}</div></section>`;
+  const [allMembers,invites] = await Promise.all([api.members(true),api.invites()]);
+  const members = sortedMembers(allMembers.filter(member => member.role === 'student'));
+  const linked = new Map(invites.filter(item => item.uid).map(item => [item.uid,item.id]));
+  const registered = new Set(invites.map(item => item.id));
+  const pending = invites.filter(item => !item.uid).sort((a,b) => names.compare(a.nickname,b.nickname));
+  const memberRow = member => '<form class="member-form" data-uid="' + escape(member.id) + '"><label>暱稱<input name="nickname" maxlength="32" required value="' + escape(member.nickname) + '"></label><input name="active" type="hidden" value="' + (member.active ? 'yes' : 'no') + '"><span class="muted">' + escape(linked.get(member.id) ?? '') + '</span>' +
+    (member.active ? button('儲存','button secondary') : '') + '<button type="button" class="text-button" data-action="' + (member.active ? 'remove-member' : 'restore-member') + '" data-id="' + escape(member.id) + '">' + (member.active ? '移除隊員' : '重新啟用') + '</button></form>';
+  const preview = rosterPreview ? '<div class="stack"><h3>匯入預覽</h3>' +
+    rosterPreview.errors.map(error => '<p>' + escape(error) + '</p>').join('') +
+    rosterPreview.rows.map(item => '<p>' + escape(item.nickname) + ' · ' + escape(item.email) + ' · ' + (registered.has(item.email) ? '已有名單紀錄' : '待加入') + '</p>').join('') +
+    (rosterPreview.errors.length || !rosterPreview.rows.some(item => !registered.has(item.email)) ? '' : '<button class="button" data-action="apply-roster">確認批量加入</button>') + '</div>' : '';
+  return title('隊員管理','用學校電郵加入隊員。學生首次登入前須驗證電郵。') +
+    '<section class="panel admin-card"><details><summary><strong>＋加入隊員</strong></summary><form id="invite-one" class="member-form"><label>學校電郵<input name="email" type="email" maxlength="254" required></label><label>暱稱<input name="nickname" maxlength="32" required></label>' + button('加入隊員') + '</form></details></section>' +
+    '<section class="panel admin-card"><details ' + (rosterPreview ? 'open' : '') + '><summary><strong>批量加入</strong></summary><form id="invite-batch" class="stack"><label>從 Excel 貼上學校電郵和暱稱兩欄<textarea name="rows" rows="6" maxlength="40000" required>' + escape(rosterPreview?.raw) + '</textarea></label>' + button('預覽名單') + '</form>' + preview + '</details></section>' +
+    '<section class="panel admin-card"><h2>等待學生啟用 · ' + pending.length + '</h2>' + (pending.map(item => '<div class="row"><span>' + escape(item.nickname) + ' · ' + escape(item.id) + '</span><button class="text-button" data-action="remove-invite" data-id="' + escape(item.id) + '">取消加入</button></div>').join('') || '<p class="muted">暫無紀錄。</p>') + '</section>' +
+    '<section class="panel admin-card"><h2>在籍隊員</h2>' + (members.filter(item => item.active).map(memberRow).join('') || '<p class="muted">暫無在籍隊員。</p>') + '</section>' +
+    '<section class="panel admin-card"><details><summary>已停用或移除的隊員</summary>' + members.filter(item => !item.active).map(memberRow).join('') + '</details></section>' +
+    '<section class="panel admin-card"><details><summary>進階：連結已建立的 Firebase 帳戶</summary><form id="member-add" class="member-form"><label>Firebase UID<input name="uid" maxlength="128" required></label><label>暱稱<input name="nickname" maxlength="32" required></label>' + button('連結帳戶') + '</form></details></section>';
 }
 async function moderation() {
   const [posts,replies,membership] = await Promise.all([api.posts(true),api.replyQueue(),api.members(true)]);
@@ -287,6 +323,7 @@ async function render({focus=false} = {}) {
     let html, picker = '';
     if (current === 'privacy') html = privacyView();
     else if (!user) html = loginView();
+    else if (!profile && !api.demo && !user.emailVerified) html = title('請驗證學校電郵','開啟驗證電郵內的連結，然後回到此頁。') + '<div class="row"><button class="button" data-action="refresh">我已驗證</button><button class="button secondary" data-action="verify-email">重寄驗證電郵</button><button class="text-button" data-action="logout">登出</button></div>';
     else if (!profile?.active) html = title('帳戶尚未開通','請聯絡帶隊老師開通或恢復帳戶。') +
       '<button class="button" data-action="logout">登出</button>';
     else if (current === 'account') html = account();
@@ -440,6 +477,35 @@ async function clickAction(control) {
       form.elements.chapters.value = sequence(form.elements.book.value,Number(form.elements.first.value),Number(form.elements.last.value),books).join('\n');
       break;
     }
+    case 'apply-roster': {
+      if (profile?.role !== 'teacher' || !rosterPreview || rosterPreview.errors.length) return;
+      const added = await api.addInvites(rosterPreview.rows);
+      rosterPreview = undefined;
+      await render();
+      notify('已加入 ' + added + ' 位隊員。');
+      break;
+    }
+    case 'remove-member':
+    case 'restore-member':
+    case 'remove-invite': {
+      if (profile?.role !== 'teacher') return;
+      if (action === 'remove-invite') {
+        if (!window.confirm('取消這位學生的加入資格？')) return;
+        await api.removeInvite(id);
+      } else if (action === 'remove-member') {
+        if (!window.confirm('移除這位隊員？隊員將無法進入隊內頁面。')) return;
+        await api.removeMember(id);
+      } else {
+        await api.saveMember(id,{active:true},false);
+      }
+      await render();
+      notify(action === 'restore-member' ? '隊員已重新啟用。' : '已更新隊員名單。');
+      break;
+    }
+    case 'verify-email':
+      await api.verify();
+      notify('已發出驗證電郵。');
+      break;
     case 'reset': {
       const input = document.querySelector('#login-form input[name="email"]');
       if (input && (!input.value || !input.reportValidity())) {input.focus(); throw Error('請先輸入帳戶電郵。');}
@@ -452,7 +518,10 @@ async function clickAction(control) {
       await api.logout();
       break;
     case 'refresh':
-      if (user) profile = await api.member(user.uid);
+      if (user) {
+        profile = api.demo ? await api.member(user.uid) : await api.refreshMember(user.uid);
+        if (!api.demo) user = api.currentUser();
+      }
       await render();
   }
 }
@@ -485,11 +554,24 @@ document.addEventListener('submit',(event) => {
   const get = (name) => String(data.get(name) ?? '').trim();
   void mutate(event.submitter,async () => {
     if (form.id === 'login-form') {
-      await api.login(get('email'),data.get('password'));
+      if (event.submitter?.name === 'register') await api.register(get('email'),data.get('password'));
+      else await api.login(get('email'),data.get('password'));
       return;
     }
     let confirmation = '已儲存。';
-    if (form.id === 'post-form' || form.id === 'reply-form') {
+    if (form.id === 'invite-one' || form.id === 'invite-batch') {
+      if (profile?.role !== 'teacher') return;
+      if (form.id === 'invite-batch') {
+        const raw = get('rows');
+        rosterPreview = {...parseRoster(raw),raw};
+        await render();
+        return;
+      }
+      const entry = parseRoster(get('email') + '\t' + get('nickname'));
+      if (entry.errors.length || entry.rows.length !== 1) throw Error(entry.errors[0] ?? '請輸入電郵及暱稱。');
+      const added = await api.addInvites(entry.rows);
+      confirmation = added ? '已加入名單，等候學生驗證電郵。' : '此電郵已在名單。';
+    } else if (form.id === 'post-form' || form.id === 'reply-form') {
       if (!get('body')) throw Error('請輸入分享內容。');
       const context = form.dataset.plan ? {planId:form.dataset.plan,dayIndex:Number(form.dataset.day)} : undefined;
       await api.post(get('body'),form.dataset.parent || undefined,context);
@@ -502,7 +584,7 @@ document.addEventListener('submit',(event) => {
       const nickname = get('nickname');
       if (!uid || uid.includes('/') || ['.','..','__proto__','constructor','prototype'].includes(uid) || !nickname) throw Error('請輸入有效的 UID 與暱稱。');
       const isNew = form.id === 'member-add';
-      await api.saveMember(uid,{nickname,active:isNew || data.has('active')},isNew);
+      await api.saveMember(uid,{nickname,active:isNew || get('active') === 'yes'},isNew);
     } else if (form.id === 'plan-form') {
       const old = latestPlans.find((plan) => plan.id === form.dataset.id);
       const now = api.now();
@@ -541,11 +623,12 @@ async function boot() {
     profile = undefined;
     selectedPlan = selectedChapter = openThread = editPlan = selectedStudent = undefined;
     latestPlans = [];
+    rosterPreview = undefined;
     nestStage = 'all';
     main.innerHTML = '<p class="loading">載入 Eagles Daily Word…</p>';
     header.innerHTML = '';
     try {
-      const member = identity ? await api.member(identity.uid) : null;
+      const member = identity ? await (api.claimMember ?? api.member)(identity.uid) : null;
       if (version !== authEpoch) return;
       profile = member;
       if (api.demo && route() !== 'privacy') {

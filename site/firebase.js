@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js';
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
-  browserSessionPersistence, sendPasswordResetEmail, connectAuthEmulator} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js';
+  browserSessionPersistence, sendPasswordResetEmail, connectAuthEmulator, createUserWithEmailAndPassword, sendEmailVerification, reload, getIdToken} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js';
 import {getFirestore, doc, collection, collectionGroup, query, where, getDoc, getDocs, setDoc,
   addDoc, updateDoc, runTransaction, serverTimestamp, connectFirestoreEmulator} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js';
 import {firebaseConfig, emulators} from './config.js';
@@ -34,11 +34,64 @@ export async function makeFirebase() {
     ]);
     return [...new Map([...approved, ...own].map((post) => [post.id, post])).values()];
   }
+  async function claimMember(uid) {
+    const target = ref('members',uid);
+    const existing = (await getDoc(target)).data();
+    if (existing || !auth.currentUser?.emailVerified) return existing;
+    const email = auth.currentUser.email.toLowerCase();
+    const ticket = ref('invites',email);
+    return runTransaction(db,async (tx) => {
+      const member = (await tx.get(target)).data();
+      if (member) return member;
+      const item = (await tx.get(ticket)).data();
+      if (!item || item.uid) return undefined;
+      const profile = {nickname:item.nickname,role:'student',active:true,shareProgress:false};
+      tx.set(target,profile);
+      tx.update(ticket,{uid});
+      return profile;
+    });
+  }
   return {
     now:Date.now,
     observe:(callback) => onAuthStateChanged(auth, callback),
     login:(email, password) => signInWithEmailAndPassword(auth, email, password),
     logout:() => signOut(auth),
+    async register(email,password) {
+      const {user} = await createUserWithEmailAndPassword(auth,email,password);
+      await sendEmailVerification(user);
+    },
+    verify:() => sendEmailVerification(auth.currentUser),
+    async refreshMember(uid) {
+      await reload(auth.currentUser);
+      await getIdToken(auth.currentUser,true);
+      return claimMember(uid);
+    },
+    currentUser:() => auth.currentUser,
+    claimMember,
+    invites:() => all(group('invites')),
+    async addInvites(rows) {
+      return runTransaction(db,async (tx) => {
+        const targets = rows.map(({email}) => ref('invites',email));
+        const existing = await Promise.all(targets.map(target => tx.get(target)));
+        let added = 0;
+        rows.forEach(({nickname},index) => {
+          if (existing[index].exists()) return;
+          tx.set(targets[index],{nickname,uid:''});
+          added++;
+        });
+        return added;
+      });
+    },
+    async removeInvite(email) {
+      const target = ref('invites',email);
+      return runTransaction(db,async (tx) => {
+        const current = (await tx.get(target)).data();
+        if (!current) return;
+        if (current.uid) throw Error('隊員已開通，請在在籍名單移除。');
+        tx.delete(target);
+      });
+    },
+    removeMember:(uid) => updateDoc(ref('members',uid),{active:false}),
     reset:(email) => sendPasswordResetEmail(auth, email),
     member:async (uid) => (await getDoc(ref('members', uid))).data(),
     members:(admin) => all(admin ? group('members') : query(group('members'), where('active', '==', true))),

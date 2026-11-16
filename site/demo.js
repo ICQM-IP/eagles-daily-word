@@ -76,6 +76,21 @@ export function makeDemo() {
         state.members[uid] = {shareProgress:false, ...state.members[uid], ...fields, role:'student'};
       });
     },
+    invites:async () => list(read().invites),
+    addInvites(rows) {
+      let added = 0;
+      change(state => {
+        state.invites ??= {};
+        for (const {email,nickname} of rows) {
+          if (state.invites[email]) continue;
+          state.invites[email] = {nickname,uid:''};
+          added++;
+        }
+      });
+      return added;
+    },
+    removeInvite(email) {change(state => {delete state.invites[email];});},
+    removeMember(uid) {change(state => {state.members[uid].active = false;});},
     savePlan(plan) {change((state) => {state.plans[plan.id] = plan;});},
     posts:async (admin) => threads(null, admin),
     replies:async (parent, admin) => threads(parent, admin),
