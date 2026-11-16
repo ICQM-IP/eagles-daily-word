@@ -71,7 +71,7 @@ function shell(current) {
 function loginView() {
   if (api.demo) return title('Eagles Daily Word') + `<section class="panel login"><button class="button" data-action="demo-role" data-id="student">進入學生示範</button> <button class="button secondary" data-action="demo-role" data-id="teacher">進入老師示範</button></section>`;
   return `<section class="login-layout"><div class="login-art"><h1>Eagles<br>Daily Word</h1>${bookSticker('login-sticker')}</div>
-  <form class="panel login stack" id="login-form"><h2>隊員登入</h2><p class="muted">使用老師登記的學校電郵。首次加入請先登記及驗證電郵。</p>
+  <form class="panel login stack" id="login-form"><h2>隊員登入</h2><p class="muted">使用老師登記的學校電郵。首次加入請輸入學校電郵，設定密碼後按「首次加入」。</p>
   <label>電郵<input name="email" type="email" autocomplete="username" required></label>
   <label>密碼<input name="password" type="password" autocomplete="current-password" required></label>
   ${button('登入')}<button type="submit" class="button secondary" name="register" value="yes">首次加入</button><button type="button" class="text-button" data-action="reset">忘記密碼</button></form></section>`;
@@ -262,7 +262,7 @@ async function adminMembers() {
     rosterPreview.errors.map(error => '<p>' + escape(error) + '</p>').join('') +
     rosterPreview.rows.map(item => '<p>' + escape(item.nickname) + ' · ' + escape(item.email) + ' · ' + (registered.has(item.email) ? '已有名單紀錄' : '待加入') + '</p>').join('') +
     (rosterPreview.errors.length || !rosterPreview.rows.some(item => !registered.has(item.email)) ? '' : '<button class="button" data-action="apply-roster">確認批量加入</button>') + '</div>' : '';
-  return title('隊員管理','用學校電郵加入隊員。學生首次登入前須驗證電郵。') +
+  return title('隊員管理','用學校電郵加入隊員。學生以名單上的電郵首次加入後即可使用。') +
     '<section class="panel admin-card"><details><summary><strong>＋加入隊員</strong></summary><form id="invite-one" class="member-form"><label>學校電郵<input name="email" type="email" maxlength="254" required></label><label>暱稱<input name="nickname" maxlength="32" required></label>' + button('加入隊員') + '</form></details></section>' +
     '<section class="panel admin-card"><details ' + (rosterPreview ? 'open' : '') + '><summary><strong>批量加入</strong></summary><form id="invite-batch" class="stack"><label>從 Excel 貼上學校電郵和暱稱兩欄<textarea name="rows" rows="6" maxlength="40000" required>' + escape(rosterPreview?.raw) + '</textarea></label>' + button('預覽名單') + '</form>' + preview + '</details></section>' +
     '<section class="panel admin-card"><h2>等待學生啟用 · ' + pending.length + '</h2>' + (pending.map(item => '<div class="row"><span>' + escape(item.nickname) + ' · ' + escape(item.id) + '</span><button class="text-button" data-action="remove-invite" data-id="' + escape(item.id) + '">取消加入</button></div>').join('') || '<p class="muted">暫無紀錄。</p>') + '</section>' +
@@ -323,7 +323,6 @@ async function render({focus=false} = {}) {
     let html, picker = '';
     if (current === 'privacy') html = privacyView();
     else if (!user) html = loginView();
-    else if (!profile && !api.demo && !user.emailVerified) html = title('請驗證學校電郵','開啟驗證電郵內的連結，然後回到此頁。') + '<div class="row"><button class="button" data-action="refresh">我已驗證</button><button class="button secondary" data-action="verify-email">重寄驗證電郵</button><button class="text-button" data-action="logout">登出</button></div>';
     else if (!profile?.active) html = title('帳戶尚未開通','請聯絡帶隊老師開通或恢復帳戶。') +
       '<button class="button" data-action="logout">登出</button>';
     else if (current === 'account') html = account();
@@ -502,10 +501,6 @@ async function clickAction(control) {
       notify(action === 'restore-member' ? '隊員已重新啟用。' : '已更新隊員名單。');
       break;
     }
-    case 'verify-email':
-      await api.verify();
-      notify('已發出驗證電郵。');
-      break;
     case 'reset': {
       const input = document.querySelector('#login-form input[name="email"]');
       if (input && (!input.value || !input.reportValidity())) {input.focus(); throw Error('請先輸入帳戶電郵。');}
@@ -518,10 +513,7 @@ async function clickAction(control) {
       await api.logout();
       break;
     case 'refresh':
-      if (user) {
-        profile = api.demo ? await api.member(user.uid) : await api.refreshMember(user.uid);
-        if (!api.demo) user = api.currentUser();
-      }
+      if (user) profile = await (api.claimMember ?? api.member)(user.uid);
       await render();
   }
 }
@@ -570,7 +562,7 @@ document.addEventListener('submit',(event) => {
       const entry = parseRoster(get('email') + '\t' + get('nickname'));
       if (entry.errors.length || entry.rows.length !== 1) throw Error(entry.errors[0] ?? '請輸入電郵及暱稱。');
       const added = await api.addInvites(entry.rows);
-      confirmation = added ? '已加入名單，等候學生驗證電郵。' : '此電郵已在名單。';
+      confirmation = added ? '已加入名單，等候學生首次登入。' : '此電郵已在名單。';
     } else if (form.id === 'post-form' || form.id === 'reply-form') {
       if (!get('body')) throw Error('請輸入分享內容。');
       const context = form.dataset.plan ? {planId:form.dataset.plan,dayIndex:Number(form.dataset.day)} : undefined;

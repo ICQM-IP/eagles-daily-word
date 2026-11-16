@@ -1,6 +1,6 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js';
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
-  browserSessionPersistence, sendPasswordResetEmail, connectAuthEmulator, createUserWithEmailAndPassword, sendEmailVerification, reload, getIdToken} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js';
+  browserSessionPersistence, sendPasswordResetEmail, connectAuthEmulator, createUserWithEmailAndPassword} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js';
 import {getFirestore, doc, collection, collectionGroup, query, where, getDoc, getDocs, setDoc,
   addDoc, updateDoc, runTransaction, serverTimestamp, connectFirestoreEmulator} from 'https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js';
 import {firebaseConfig, emulators} from './config.js';
@@ -37,7 +37,7 @@ export async function makeFirebase() {
   async function claimMember(uid) {
     const target = ref('members',uid);
     const existing = (await getDoc(target)).data();
-    if (existing || !auth.currentUser?.emailVerified) return existing;
+    if (existing || !auth.currentUser?.email || auth.currentUser.uid !== uid) return existing;
     const email = auth.currentUser.email.toLowerCase();
     const ticket = ref('invites',email);
     return runTransaction(db,async (tx) => {
@@ -56,17 +56,7 @@ export async function makeFirebase() {
     observe:(callback) => onAuthStateChanged(auth, callback),
     login:(email, password) => signInWithEmailAndPassword(auth, email, password),
     logout:() => signOut(auth),
-    async register(email,password) {
-      const {user} = await createUserWithEmailAndPassword(auth,email,password);
-      await sendEmailVerification(user);
-    },
-    verify:() => sendEmailVerification(auth.currentUser),
-    async refreshMember(uid) {
-      await reload(auth.currentUser);
-      await getIdToken(auth.currentUser,true);
-      return claimMember(uid);
-    },
-    currentUser:() => auth.currentUser,
+    register:(email,password) => createUserWithEmailAndPassword(auth,email,password),
     claimMember,
     invites:() => all(group('invites')),
     async addInvites(rows) {
