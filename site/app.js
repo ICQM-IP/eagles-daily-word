@@ -607,7 +607,7 @@ async function boot() {
   const response = await fetch('./assets/bible/books.json');
   if (!response.ok) throw Error('無法載入書卷資料。');
   books = await response.json();
-  api = firebaseConfig ? await (await import('./firebase.js')).makeFirebase() : makeDemo();
+  api = firebaseConfig ? await (await import('./firebase.js?v=20261116-join')).makeFirebase() : makeDemo();
   api.observe(async (identity) => {
     const version = ++authEpoch;
     ++epoch;
