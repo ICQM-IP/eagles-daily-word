@@ -85,29 +85,44 @@ test('atomic check-in validates dates, identity, key, increment and count-only p
   await assertSucceeds(getDoc(nest(student,'student')));
   await assertSucceeds(getDoc(nest(teacher,'student')));
 });
-test('sharing and replies require moderation and parent visibility', async () => {
-  await assertFails(setDoc(post(student,'spoof'),{...pending('student'),status:'approved'}));
-  await assertFails(setDoc(post(student,'impersonation'),pending('peer')));
-  await assertSucceeds(setDoc(post(student,'open'),pending('student')));
-  await assertFails(getDoc(post(peer,'open')));
-  await assertSucceeds(getDoc(post(student,'open')));
-  await assertSucceeds(getDocs(query(collection(student,'posts'),where('uid','==','student'))));
-  await assertFails(getDocs(collection(student,'posts')));
-  await assertFails(setDoc(reply(peer,'open','r1'),pending('peer')));
-  await assertFails(updateDoc(post(student,'open'),{status:'approved'}));
-  await assertFails(updateDoc(post(teacher,'open'),{status:'approved',body:'changed'}));
-  await assertSucceeds(updateDoc(post(teacher,'open'),{status:'approved'}));
+test('chapter comments publish immediately; only teachers remove and restore', async () => {
+  const published = (uid) => ({uid,body:'Sharing',status:'approved',createdAt:serverTimestamp()});
+  const chapter = (uid,index=0) => ({...published(uid),planId:'luke',dayIndex:index});
+  for (const [db,uid] of [[visitor,'visitor'],[outside,'outside'],[inactive,'inactive']]) {
+    await assertFails(setDoc(post(db,'blocked-'+uid),chapter(uid)));
+  }
+  await assertFails(setDoc(post(student,'impersonation'),chapter('peer')));
+  await assertFails(setDoc(post(student,'future'),chapter('student',2)));
+  await assertFails(setDoc(post(student,'negative'),chapter('student',-1)));
+  await assertFails(setDoc(post(student,'fraction'),chapter('student',0.5)));
+  await assertFails(setDoc(post(student,'missing-plan'),{...chapter('student'),planId:'missing'}));
+  await assertFails(setDoc(post(student,'no-context'),published('student')));
+  await assertFails(setDoc(post(student,'empty'),{...chapter('student'),body:''}));
+  await assertFails(setDoc(post(student,'long'),{...chapter('student'),body:'x'.repeat(1801)}));
+  await assertFails(setDoc(post(student,'extra'),{...chapter('student'),extra:true}));
+  await assertFails(setDoc(post(student,'pending'),{...chapter('student'),status:'pending'}));
+  await assertSucceeds(setDoc(post(student,'open'),chapter('student')));
+  await assertSucceeds(getDoc(post(peer,'open')));
   await assertSucceeds(getDocs(query(collection(peer,'posts'),where('status','==','approved'))));
-  await assertSucceeds(setDoc(reply(peer,'open','r1'),pending('peer')));
+  await assertFails(updateDoc(post(student,'open'),{status:'hidden'}));
+  await assertFails(updateDoc(post(peer,'open'),{body:'changed'}));
+  await assertFails(updateDoc(post(teacher,'open'),{status:'hidden',body:'changed'}));
+  await assertSucceeds(setDoc(reply(peer,'open','r1'),published('peer')));
+  await assertSucceeds(getDoc(reply(student,'open','r1')));
+  await assertFails(updateDoc(reply(peer,'open','r1'),{status:'hidden'}));
+  await assertSucceeds(updateDoc(reply(teacher,'open','r1'),{status:'hidden'}));
   await assertFails(getDoc(reply(student,'open','r1')));
-  await assertFails(getDocs(query(collectionGroup(student,'replies'),where('status','==','pending'))));
-  await assertSucceeds(getDocs(query(collectionGroup(teacher,'replies'),where('status','==','pending'))));
   await assertSucceeds(updateDoc(reply(teacher,'open','r1'),{status:'approved'}));
-  await assertSucceeds(getDocs(query(collection(student,'posts','open','replies'),where('status','==','approved'))));
   await assertSucceeds(updateDoc(post(teacher,'open'),{status:'hidden'}));
+  await assertFails(getDoc(post(peer,'open')));
   await assertFails(getDoc(reply(peer,'open','r1')));
+  await assertFails(setDoc(reply(peer,'open','r2'),published('peer')));
   await assertSucceeds(getDoc(reply(teacher,'open','r1')));
+  await assertSucceeds(updateDoc(post(teacher,'open'),{status:'approved'}));
+  await assertSucceeds(getDoc(reply(student,'open','r1')));
+  await assertSucceeds(setDoc(post(teacher,'teacher-post'),chapter('teacher')));
 });
+
 test('teachers can schedule plans but cannot rewrite historical dates or chapters', async () => {
   const future = {...schedule,start:schedule.start+5*DAY};
   await assertFails(setDoc(plan(teacher,'backdated'),schedule));
