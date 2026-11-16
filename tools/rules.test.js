@@ -134,3 +134,31 @@ test('teachers can schedule plans but cannot rewrite historical dates or chapter
   await assertFails(updateDoc(plan(teacher),{start:future.start}));
   await assertSucceeds(updateDoc(plan(teacher),{title:'更正名稱'}));
 });
+
+test('only a verified invited address can claim a student profile once', async () => {
+  const email = 'eagle@example.org';
+  const ticket = (db) => doc(db,'invites',email);
+  const invite = {nickname:'Eagle',uid:''};
+  const candidate = (uid, address, verified) => env.authenticatedContext(uid,{email:address,email_verified:verified}).firestore();
+  function claim(db, uid, profile = member('Eagle')) {
+    const batch = writeBatch(db);
+    batch.set(account(db,uid),profile);
+    batch.update(ticket(db),{uid});
+    return batch.commit();
+  }
+  const invited = candidate('joiner',email,true);
+  await assertFails(setDoc(ticket(student),invite));
+  await assertSucceeds(setDoc(ticket(teacher),invite));
+  await assertFails(getDocs(collection(invited,'invites')));
+  await assertFails(claim(candidate('unverified',email,false),'unverified'));
+  await assertFails(claim(candidate('wrong','other@example.org',true),'wrong'));
+  await assertFails(claim(invited,'joiner',member('Other')));
+  await assertFails(setDoc(account(invited,'joiner'),member('Eagle')));
+  await assertSucceeds(claim(invited,'joiner'));
+  await assertFails(claim(candidate('second',email,true),'second'));
+  await assertSucceeds(updateDoc(account(teacher,'joiner'),{active:false}));
+  await assertFails(getDoc(plan(invited)));
+  await assertFails(claim(invited,'joiner'));
+  await assertSucceeds(updateDoc(account(teacher,'joiner'),{active:true}));
+  await assertSucceeds(getDoc(plan(invited)));
+});
