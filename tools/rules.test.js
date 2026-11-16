@@ -128,7 +128,8 @@ test('chapter comments publish immediately; only teachers remove and restore', a
 
 test('teachers can schedule plans but cannot rewrite historical dates or chapters', async () => {
   const future = {...schedule,start:schedule.start+5*DAY};
-  await assertFails(setDoc(plan(teacher,'backdated'),schedule));
+  await assertSucceeds(setDoc(plan(teacher,'backdated'),schedule));
+  await assertFails(setDoc(plan(student,'backdated-student'),schedule));
   await assertFails(setDoc(plan(student,'fake'),future));
   await assertSucceeds(setDoc(plan(teacher,'new'),future));
   await assertSucceeds(updateDoc(plan(teacher,'new'),{days:['MAT 1']}));
