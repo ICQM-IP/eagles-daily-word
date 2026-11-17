@@ -175,7 +175,7 @@ async function nest(plan) {
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }
 function writer(parent = '', plan, index) {
-  return `<form id="${parent ? 'reply-form' : 'post-form'}" class="stack writer" data-parent="${escape(parent)}" data-plan="${escape(plan?.id)}" data-day="${index ?? ''}">
+  return `<form ${parent ? '' : 'id="post-form"'} class="stack writer" data-parent="${escape(parent)}" data-plan="${escape(plan?.id)}" data-day="${index ?? ''}">
   <label>${parent ? '回覆' : '寫下分享'}<textarea name="body" maxlength="1800" rows="${parent ? 2 : 3}" required></textarea></label>
   <div class="form-end"><small class="muted">即時發佈給隊員 · 老師可刪除留言</small>${button(parent ? '送出回覆' : '送出分享')}</div></form>`;
 }
@@ -189,13 +189,36 @@ async function wall(plan, index) {
   const [allPosts,membership] = await Promise.all([api.posts(false),api.members(false)]);
   const posts = allPosts.filter(post => post.status !== 'hidden' && (!plan || (post.planId === plan.id && post.dayIndex === index)));
   const members = new Map(membership.map(member => [member.id,member.nickname]));
-  const expanded = posts.find(post => post.id === openThread && post.status === 'approved');
-  const replies = expanded ? (await api.replies(openThread,false)).filter(reply => reply.status !== 'hidden') : [];
+  const threads = posts.filter(post => post.status === 'approved' && (!plan || post.id === openThread));
+  const repliesByPost = new Map();
+  for (let offset = 0; offset < threads.length; offset += 8) {
+    await Promise.all(threads.slice(offset,offset+8).map(async ({id}) => {
+      try {
+        const replies = (await api.replies(id,false)).filter(reply => reply.status !== 'hidden');
+        repliesByPost.set(id,replies.sort((a,b) => a.createdAt-b.createdAt || a.id.localeCompare(b.id)));
+      } catch (error) {
+        console.error('Could not load replies',error);
+        repliesByPost.set(id,null);
+      }
+    }));
+  }
+  const discussion = (post) => {
+    if (post.status !== 'approved') return '';
+    const replies = repliesByPost.get(post.id);
+    const expanded = plan && post.id === openThread;
+    if (plan && !expanded) return `<button class="text-button" data-action="thread" data-id="${escape(post.id)}" aria-expanded="false">查看與回覆 ↗</button>`;
+    const renderReplies = items => items.map(reply => '<div class="reply">' + note(reply,members) + deleteButton(reply,post.id) + '</div>').join('');
+    const toggle = expanded ? `<button class="text-button" data-action="thread" data-id="${escape(post.id)}" aria-expanded="true">收起回覆</button>` : '';
+    if (!replies) return toggle + '<p class="muted">暫時未能載入回覆，請重新整理頁面。</p>';
+    const older = !plan && replies.length > 5 ? replies.slice(0,-5) : [];
+    const recent = plan ? replies : replies.slice(-5);
+    const history = older.length ? `<details><summary>展開較早的 ${older.length} 個回覆</summary>${renderReplies(older)}</details>` : '';
+    return toggle + '<div class="replies">' + history + renderReplies(recent) + writer(post.id) + '</div>';
+  };
   const heading = plan ? '<h2>本章留言</h2><p class="muted">Day ' + (index+1) + ' · ' + escape(chapterName(plan.days[index])) + '</p>' : illustratedTitle('Eagles 分享牆','每日經文下面可發表留言，這裡集中顯示所有分享。','letter');
   return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
     posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + (!plan && post.planId ? '<p class="eyebrow">Day ' + (post.dayIndex+1) + ' · ' + escape(post.planId) + '</p>' : '') + note(post,members) + deleteButton(post) +
-      (post.status === 'approved' ? '<button class="text-button" data-action="thread" data-id="' + escape(post.id) + '" aria-expanded="' + (expanded?.id === post.id) + '">' + (expanded?.id === post.id ? '收起回覆' : '查看與回覆') + ' ↗</button>' : '') +
-      (expanded?.id === post.id ? '<div class="replies">' + replies.sort((a,b) => a.createdAt-b.createdAt).map(reply => '<div class="reply">' + note(reply,members) + deleteButton(reply,post.id) + '</div>').join('') + writer(post.id) + '</div>' : '') + '</article>').join('') +
+      discussion(post) + '</article>').join('') +
     (posts.length ? '' : '<p class="muted">暫時未有分享，歡迎留下你的讀經感想。</p>') + '</div></section>';
 }
 function account() {
@@ -587,7 +610,7 @@ document.addEventListener('submit',(event) => {
       if (entry.errors.length || entry.rows.length !== 1) throw Error(entry.errors[0] ?? '請輸入電郵及暱稱。');
       const added = await api.addInvites(entry.rows);
       confirmation = added ? '已加入名單，等候學生首次登入。' : '此電郵已在名單。';
-    } else if (form.id === 'post-form' || form.id === 'reply-form') {
+    } else if (form.classList.contains('writer')) {
       if (!get('body')) throw Error('請輸入分享內容。');
       const context = form.dataset.plan ? {planId:form.dataset.plan,dayIndex:Number(form.dataset.day)} : undefined;
       await api.post(get('body'),form.dataset.parent || undefined,context);
