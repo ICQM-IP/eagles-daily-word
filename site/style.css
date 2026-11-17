@@ -298,3 +298,7 @@ footer span{letter-spacing:.12em;font-weight:700}
   .sharing-wall .replies{padding-inline:.55rem}
 }
 
+.catch-up{margin-top:.35rem;min-height:44px;text-align:left}
+.post-day{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.post-reading{border:1px solid #d7bd91;min-height:32px;text-align:left}
+.post-reading:hover{text-decoration:underline}

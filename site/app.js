@@ -102,6 +102,8 @@ function home(plan, checks, now) {
   const started = now >= plan.start;
   const finished = now >= endDate(plan) + 86400000;
   const latest = started ? `<button class="button gold" data-action="chapter" data-id="${index}">${finished ? '閱讀最後一章' : '開始閱讀'} <span aria-hidden="true">→</span></button>` : '<span class="opens">於 ' + zhDate.format(plan.start) + ' 開始</span>';
+  const catchUp = profile.role === 'teacher' ? -1 : plan.days.findIndex((_, day) =>
+    readable(plan,day,now) && dateKey(dayDate(plan,day)) !== dateKey(now) && !done.has(day));
   const milestone = stage === 6 ? '展翅時刻' : '我的成長旅程';
   const [, month, day] = dateKey(dayDate(plan,index)).split('-');
   const dayLabel = finished ? '第 ' + (index+1) + ' 日 · 計劃已結束'
@@ -111,6 +113,7 @@ function home(plan, checks, now) {
   <div class="hero-date"><time datetime="${dateKey(dayDate(plan,index))}">${month} · ${day}</time><span>${dayLabel}</span></div>
   <h1>${escape(plan.title)}</h1><p class="hero-subtitle">${escape(plan.subtitle)}</p>
   <div class="hero-action">${started ? '<p class="hero-chapter">' + escape(chapterName(plan.days[index])) + '</p>' : ''}${latest}</div>
+  ${catchUp >= 0 ? `<button type="button" class="text-button catch-up" data-action="chapter" data-id="${catchUp}">補讀最早未讀：${escape(chapterName(plan.days[catchUp]))}</button>` : ''}
   </div><div class="hero-art">${bookSticker('hero-sticker')}</div></section>
   <div class="dashboard"><section class="panel calendar"><div class="section-head"><div><h2>${plan.mode === 'countdown' ? '倒數日曆' : '每日讀經'}</h2></div><span class="badge">${count} / ${total} 已讀</span></div>
   ${schedule(plan,done,now)}
@@ -180,14 +183,25 @@ function writer(parent = '', plan, index) {
   <label>${parent ? '回覆' : '寫下分享'}<textarea name="body" maxlength="1800" rows="${parent ? 2 : 3}" required></textarea></label>
   <div class="form-end"><small class="muted">即時發佈給隊員 · 老師可刪除留言</small>${button(parent ? '送出回覆' : '送出分享')}</div></form>`;
 }
-function note(post, members, admin = false, showDay = false) {
-  return `<div class="note-meta"><strong>${escape(members.get(post.uid) ?? '隊員')}</strong><time>${stamp(post.createdAt)}</time>${showDay && post.planId ? `<span class="post-day">Day ${post.dayIndex + 1}</span>` : ''}${admin || post.status !== 'approved' ? statusBadge(post.status) : ''}</div><p class="post-body">${escape(post.body)}</p>`;
+function postReadingLabel(post, plans, now) {
+  if (!post.planId || !Number.isInteger(post.dayIndex) || post.dayIndex < 0) return '';
+  const plan = plans.get(post.planId);
+  const day = 'Day ' + (post.dayIndex + 1);
+  const label = escape(plan ? plan.title + ' · ' + day : day);
+  return plan && !plan.archived && readable(plan,post.dayIndex,now)
+    ? `<button type="button" class="post-day post-reading" data-action="post-reading" data-plan="${escape(plan.id)}" data-id="${post.dayIndex}" aria-label="${label} · 閱讀${escape(chapterName(plan.days[post.dayIndex]))}">${label} <span aria-hidden="true">↗</span></button>`
+    : `<span class="post-day">${label}</span>`;
+}
+function note(post, members, admin = false, readingLabel = '') {
+  return `<div class="note-meta"><strong>${escape(members.get(post.uid) ?? '隊員')}</strong><time>${stamp(post.createdAt)}</time>${readingLabel}${admin || post.status !== 'approved' ? statusBadge(post.status) : ''}</div><p class="post-body">${escape(post.body)}</p>`;
 }
 function deleteButton(post, parent = '') {
   return profile.role === 'teacher' && post.status !== 'hidden' ? '<button class="text-button" data-action="moderate" data-status="hidden" data-id="' + escape(post.id) + '" data-parent="' + escape(parent) + '">刪除留言</button>' : '';
 }
 async function wall(plan, index) {
-  const [allPosts,membership] = await Promise.all([api.posts(false),api.members(false)]);
+  const [allPosts,membership,plans] = await Promise.all([api.posts(false),api.members(false),plan ? [] : api.plans()]);
+  const plansById = new Map(plans.map(item => [item.id,item]));
+  const now = api.now();
   const posts = allPosts.filter(post => post.status !== 'hidden' && (!plan || (post.planId === plan.id && post.dayIndex === index)));
   const members = new Map(membership.map(member => [member.id,member.nickname]));
   const threads = posts.filter(post => post.status === 'approved' && (!plan || post.id === openThread));
@@ -218,7 +232,7 @@ async function wall(plan, index) {
   };
   const heading = plan ? '<h2>本章留言</h2><p class="muted">Day ' + (index+1) + ' · ' + escape(chapterName(plan.days[index])) + '</p>' : illustratedTitle('Eagles 分享牆','每日經文下面可發表留言，這裡集中顯示所有分享。','letter');
   return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall' + (plan ? '' : ' sharing-wall') + '"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
-    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + note(post,members,false,!plan) + deleteButton(post) +
+    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + note(post,members,false,plan ? '' : postReadingLabel(post,plansById,now)) + deleteButton(post) +
       discussion(post) + '</article>').join('') +
     (posts.length ? '' : '<p class="muted">暫時未有分享，歡迎留下你的讀經感想。</p>') + '</div></section>';
 }
@@ -443,6 +457,16 @@ async function clickAction(control) {
       selectedChapter = Number(id);
       await goto('read');
       break;
+    case 'post-reading': {
+      const plan = (await api.plans()).find(item => item.id === control.dataset.plan && !item.archived);
+      const index = Number(id);
+      if (!plan || !readable(plan,index,api.now())) throw Error('呢篇經文暫時未能開啟。');
+      selectedPlan = plan.id;
+      selectedChapter = index;
+      openThread = undefined;
+      await goto('read');
+      break;
+    }
     case 'current-plan':
       selectedPlan = selectedChapter = selectedStudent = undefined;
       await render();
