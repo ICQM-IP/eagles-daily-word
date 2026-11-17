@@ -217,7 +217,7 @@ async function wall(plan, index) {
   };
   const heading = plan ? '<h2>本章留言</h2><p class="muted">Day ' + (index+1) + ' · ' + escape(chapterName(plan.days[index])) + '</p>' : illustratedTitle('Eagles 分享牆','每日經文下面可發表留言，這裡集中顯示所有分享。','letter');
   return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
-    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + (!plan && post.planId ? '<p class="eyebrow">Day ' + (post.dayIndex+1) + ' · ' + escape(post.planId) + '</p>' : '') + note(post,members) + deleteButton(post) +
+    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + (!plan && post.planId ? '<p class="eyebrow">Day ' + (post.dayIndex+1) + '</p>' : '') + note(post,members) + deleteButton(post) +
       discussion(post) + '</article>').join('') +
     (posts.length ? '' : '<p class="muted">暫時未有分享，歡迎留下你的讀經感想。</p>') + '</div></section>';
 }
