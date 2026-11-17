@@ -107,9 +107,10 @@ function home(plan, checks, now) {
   const dayLabel = finished ? '第 ' + (index+1) + ' 日 · 計劃已結束'
     : started ? (plan.mode === 'countdown' ? '倒數' : '') + '第 ' + (index+1) + ' 日' : '計劃開始日';
   return `<section class="hero"><div class="hero-content">
+  <p class="hero-kicker">${finished ? "讀經回顧" : started ? "今日讀經" : "下一個讀經計劃"}</p>
   <div class="hero-date"><time datetime="${dateKey(dayDate(plan,index))}">${month} · ${day}</time><span>${dayLabel}</span></div>
   <h1>${escape(plan.title)}</h1><p class="hero-subtitle">${escape(plan.subtitle)}</p>
-  <div class="hero-action">${started ? '<strong>' + escape(chapterName(plan.days[index])) + '</strong>' : ''}${latest}</div>
+  <div class="hero-action">${started ? '<p class="hero-chapter">' + escape(chapterName(plan.days[index])) + '</p>' : ''}${latest}</div>
   </div><div class="hero-art">${bookSticker('hero-sticker')}</div></section>
   <div class="dashboard"><section class="panel calendar"><div class="section-head"><div><h2>${plan.mode === 'countdown' ? '倒數日曆' : '每日讀經'}</h2></div><span class="badge">${count} / ${total} 已讀</span></div>
   ${schedule(plan,done,now)}
@@ -119,7 +120,7 @@ function home(plan, checks, now) {
   <source media="(prefers-reduced-motion: reduce)" srcset="./assets/growth-${stage}.png">
   <img class="bird" src="./assets/growth-${stage}.gif" width="340" height="226" alt="">
   </picture></div>
-  <div class="growth-caption"><div><strong>${stages[stage][0]}</strong><span>${stages[stage][1]}</span></div><b>${count}<small> / ${total}</small></b></div>
+  <div class="growth-caption"><div><strong>${stages[stage][0]}</strong><span>${stages[stage][1]}</span></div><b class="growth-count"><small>已讀</small> ${count}<small>／${total} 章</small></b></div>
   ${meter(count,total)}<div class="milestones" aria-label="七個成長階段">${stages.map(([label],i) =>
     `<span class="${i === stage ? 'current' : i < stage ? 'past' : ''}" title="${label}" aria-label="${label}"><img class="bird growth-thumb" src="./assets/growth-${i}.png" width="340" height="226" alt=""></span>`).join('')}</div>
   <div class="growth-link">${link('nest','看看 Eagles Nest →','text-button')}</div></section></div>`;
@@ -170,8 +171,8 @@ async function nest(plan) {
     return `<article class="panel nest-card"><picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="./assets/growth-${stage}.png">
     <img class="bird nest-animation" src="./assets/growth-${stage}.gif" width="340" height="226" loading="lazy" decoding="async" alt="">
-    </picture><h3>${escape(member.nickname)}</h3>
-    ${teacher ? '<span class="badge">老師</span>' : `<p>${stages[stage][0]} · ${count} / ${total}</p>${meter(count,total,escape(member.nickname) + '的閱讀進度')}`}</article>`;
+    </picture><h3 class="nest-name">${escape(member.nickname)}${teacher ? '<span class="badge">老師</span>' : ''}</h3>
+    ${teacher ? '' : `<p class="nest-progress"><strong>已讀 ${count}／${total} 章</strong><span>${stages[stage][0]}</span></p>${meter(count,total,escape(member.nickname) + '的閱讀進度')}`}</article>`;
   }).join('') || '<p class="muted">此階段暫未有隊員。</p>'}</div>`;
 }
 function writer(parent = '', plan, index) {
@@ -179,8 +180,8 @@ function writer(parent = '', plan, index) {
   <label>${parent ? '回覆' : '寫下分享'}<textarea name="body" maxlength="1800" rows="${parent ? 2 : 3}" required></textarea></label>
   <div class="form-end"><small class="muted">即時發佈給隊員 · 老師可刪除留言</small>${button(parent ? '送出回覆' : '送出分享')}</div></form>`;
 }
-function note(post, members, admin = false) {
-  return `<div class="note-meta"><strong>${escape(members.get(post.uid) ?? '隊員')}</strong><time>${stamp(post.createdAt)}</time>${admin || post.status !== 'approved' ? statusBadge(post.status) : ''}</div><p class="post-body">${escape(post.body)}</p>`;
+function note(post, members, admin = false, showDay = false) {
+  return `<div class="note-meta"><strong>${escape(members.get(post.uid) ?? '隊員')}</strong><time>${stamp(post.createdAt)}</time>${showDay && post.planId ? `<span class="post-day">Day ${post.dayIndex + 1}</span>` : ''}${admin || post.status !== 'approved' ? statusBadge(post.status) : ''}</div><p class="post-body">${escape(post.body)}</p>`;
 }
 function deleteButton(post, parent = '') {
   return profile.role === 'teacher' && post.status !== 'hidden' ? '<button class="text-button" data-action="moderate" data-status="hidden" data-id="' + escape(post.id) + '" data-parent="' + escape(parent) + '">刪除留言</button>' : '';
@@ -216,8 +217,8 @@ async function wall(plan, index) {
     return toggle + '<div class="replies">' + history + renderReplies(recent) + writer(post.id) + '</div>';
   };
   const heading = plan ? '<h2>本章留言</h2><p class="muted">Day ' + (index+1) + ' · ' + escape(chapterName(plan.days[index])) + '</p>' : illustratedTitle('Eagles 分享牆','每日經文下面可發表留言，這裡集中顯示所有分享。','letter');
-  return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
-    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + (!plan && post.planId ? '<p class="eyebrow">Day ' + (post.dayIndex+1) + '</p>' : '') + note(post,members) + deleteButton(post) +
+  return '<section class="chapter-discussion" aria-label="留言版">' + heading + '<div class="wall' + (plan ? '' : ' sharing-wall') + '"><section class="panel">' + (plan ? writer('',plan,index) : link('read','前往每日經文留言')) + '</section>' +
+    posts.sort((a,b) => b.createdAt-a.createdAt).map(post => '<article class="panel post">' + note(post,members,false,!plan) + deleteButton(post) +
       discussion(post) + '</article>').join('') +
     (posts.length ? '' : '<p class="muted">暫時未有分享，歡迎留下你的讀經感想。</p>') + '</div></section>';
 }
