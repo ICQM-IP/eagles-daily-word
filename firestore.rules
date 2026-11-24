@@ -74,8 +74,9 @@ service cloud.firestore {
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived'])
           && (!request.resource.data.keys().hasAny(['archived']) || request.resource.data.archived == true))
         || (resource.data.get('archived', false) == false && planShape(request.resource.data) && (
-          (resource.data.start > request.time.toMillis() && request.resource.data.start > request.time.toMillis())
-          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subtitle', 'mode'])
+          resource.data.start > request.time.toMillis()
+          || (request.resource.data.start <= request.time.toMillis()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'subtitle', 'mode', 'start']))
         ))
       );
       match /progress/{uid} {
