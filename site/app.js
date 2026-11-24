@@ -347,13 +347,13 @@ function planManager(plans,now,archived) {
   <section class="panel admin-card"><form id="plan-form" class="stack" data-id="${escape(plan?.id)}"><h2>${plan ? '編輯計劃' : '建立計劃'}</h2>
   <label>計劃名稱<input name="title" maxlength="90" required value="${escape(plan?.title)}"></label><label>副標題<input name="subtitle" maxlength="120" value="${escape(plan?.subtitle)}"></label>
   <label>展示方式<select name="mode"><option value="daily">一般每日讀經</option><option value="countdown" ${plan?.mode === 'countdown' ? 'selected' : ''}>倒數日曆</option></select></label>
-  <label>開始日期（香港時間）<input type="date" name="start" value="${plan ? dateKey(plan.start) : ''}" ${locked ? 'disabled' : !plan ? 'required' : 'required min="' + dateKey(now+86400000) + '"'}></label>
+  <label>開始日期（香港時間）<input type="date" name="start" value="${plan ? dateKey(plan.start) : ''}" required ${locked ? `max="${dateKey(now)}"` : ''}></label>
   <fieldset class="stack" ${locked ? 'disabled' : ''}><legend>每日章節</legend>
   <div class="sequence-fields"><label>書卷<select name="book">${Object.entries(books).map(([code,[name]]) => `<option value="${code}" ${code==='LUK' ? 'selected' : ''}>${name} · ${code}</option>`).join('')}</select></label>
   <label>由<input name="first" type="number" min="1" value="1"></label><label>至<input name="last" type="number" min="1" value="24"></label></div>
   <button type="button" class="button secondary" data-action="sequence">產生逐章清單</button>
   <label>自訂或調整章節（每行一章）<textarea name="chapters" rows="6" placeholder="LUK 1&#10;LUK 2" required>${escape(plan?.days.join('\n'))}</textarea></label></fieldset>
-  <p class="muted"><small>${locked ? '已開始的計劃保留日期與章節，以對應既有報到。' : '每天安排一章，最後一日之後仍可補讀。'}</small></p>
+  <p class="muted"><small>${locked ? '可調整開始日期至今日或之前。章節次序會保留，以對應既有報到。' : '每天安排一章，最後一日之後仍可補讀。'}</small></p>
   ${button(plan ? '儲存變更' : '排程計劃')}</form></section></div>`;
 }
 let latestPlans = [];
@@ -650,8 +650,8 @@ document.addEventListener('submit',(event) => {
       const old = latestPlans.find((plan) => plan.id === form.dataset.id);
       const now = api.now();
       const locked = old && old.start <= now;
-      const start = locked ? old.start : midnight(get('start'));
-      if (!Number.isFinite(start) || (old && !locked && start <= now) || !get('title')) throw Error('請填寫計劃名稱及有效開始日期。修改未開始的計劃時，請選擇未來的日期。');
+      const start = midnight(get('start'));
+      if (!Number.isFinite(start) || (locked && start > now) || !get('title')) throw Error('請填寫計劃名稱及有效開始日期。已開始的計劃可選今日或之前的日期。');
       const plan = {id:old?.id ?? crypto.randomUUID(),title:get('title'),subtitle:get('subtitle'),mode:get('mode'),start,
         days:locked ? old.days : parseDays(get('chapters'),books)};
       await api.savePlan(plan);
